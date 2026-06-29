@@ -11,7 +11,7 @@ export default function NotFound() {
         The page or property you are looking for is not here.
       </p>
       <Link
-        href="/"
+        href="/briefing"
         className="mt-7 inline-flex rounded-full bg-gilt px-5 py-2.5 text-sm font-semibold text-ink-900 transition hover:bg-gilt-soft"
       >
         Back to all stays

@@ -66,7 +66,7 @@ export default async function PropertyPage({ params }: PageProps) {
     <div className="mx-auto max-w-6xl px-5 pb-12">
       <div className="pt-8">
         <Link
-          href="/"
+          href="/briefing"
           className="inline-flex items-center gap-1.5 text-sm text-white/50 transition hover:text-white"
         >
           <span aria-hidden="true">←</span> Back to the briefing

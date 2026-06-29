@@ -11,7 +11,7 @@ import { signout } from "@/app/auth/actions";
 import { Logo } from "@/components/Logo";
 
 const NAV = [
-  { href: "/", label: "Briefing" },
+  { href: "/briefing", label: "Briefing" },
   { href: "/view", label: "The View" },
   { href: "/collection", label: "Collection" },
   { href: "/reserve", label: "Reserve" },

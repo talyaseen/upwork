@@ -52,7 +52,7 @@ async function CollectionList() {
           here for quick comparison.
         </p>
         <Link
-          href="/"
+          href="/briefing"
           className="mt-6 inline-flex rounded-full bg-gilt px-5 py-2.5 text-sm font-semibold text-ink-900 transition hover:bg-gilt-soft"
         >
           Discover stays
@@ -104,7 +104,7 @@ function DemoNotice() {
         accounts and per-user saved collections, protected by row-level security.
       </p>
       <Link
-        href="/"
+        href="/briefing"
         className="mt-6 inline-flex rounded-full border border-white/15 px-5 py-2.5 text-sm text-white/80 transition hover:border-white/30 hover:text-white"
       >
         Back to stays
