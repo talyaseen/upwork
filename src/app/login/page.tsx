@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { login } from "@/app/auth/actions";
+import { login, demoLogin } from "@/app/auth/actions";
 import { isSupabaseConfigured } from "@/lib/env";
 import { SubmitButton } from "@/components/SubmitButton";
 import { AuthField } from "@/components/AuthField";
@@ -45,6 +45,29 @@ export default async function LoginPage({ searchParams }: PageProps) {
           <p className="mt-5 rounded-xl border border-gilt/25 bg-gilt/[0.06] px-4 py-3 text-sm text-gilt-soft">
             Account created. Check your email to confirm, then log in.
           </p>
+        )}
+
+        {configured && (
+          <>
+            <form action={demoLogin} className="mt-6">
+              <SubmitButton
+                className="w-full rounded-full bg-gilt px-4 py-2.5 text-sm font-semibold text-ink-900 transition hover:bg-gilt-soft"
+                pendingLabel="Signing in..."
+              >
+                Try the live demo (one click)
+              </SubmitButton>
+            </form>
+            <p className="mt-2 text-center text-xs text-white/40">
+              Signs you in as{" "}
+              <span className="text-white/60">demo@aurumrates.app</span> with a
+              saved collection.
+            </p>
+            <div className="my-6 flex items-center gap-3 text-xs text-white/30">
+              <span className="h-px flex-1 bg-white/10" />
+              or sign in
+              <span className="h-px flex-1 bg-white/10" />
+            </div>
+          </>
         )}
 
         <form action={login} className="mt-6 space-y-4">

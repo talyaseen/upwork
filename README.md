@@ -229,3 +229,8 @@ Thresholds live in `src/lib/intelligence.ts` and `src/lib/rates.ts`.
   (host allow-listed in `next.config.mjs`); each photo sits over a gradient and
   blur placeholder so nothing renders broken.
 - No real Supabase or third-party network calls happen during `npm run build`.
+
+---
+
+Built by Talal Alyaseen, Senior Software Engineer and ex-CTO. LinkedIn:
+<https://kw.linkedin.com/in/talal-alyaseen>

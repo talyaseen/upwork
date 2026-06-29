@@ -40,6 +40,29 @@ export async function login(formData: FormData) {
   redirect(next);
 }
 
+// A pre-confirmed, public demo account so the client can experience the
+// authenticated views without signup friction. Intentionally shareable.
+const DEMO_EMAIL = "demo@aurumrates.app";
+const DEMO_PASSWORD = "AurumDemo2026!";
+
+export async function demoLogin() {
+  if (!isSupabaseConfigured()) {
+    redirect(`/login?error=${encodeURIComponent("demo")}`);
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({
+    email: DEMO_EMAIL,
+    password: DEMO_PASSWORD,
+  });
+  if (error) {
+    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/collection");
+}
+
 export async function signup(formData: FormData) {
   if (!isSupabaseConfigured()) {
     redirect(`/signup?error=${encodeURIComponent("demo")}`);
