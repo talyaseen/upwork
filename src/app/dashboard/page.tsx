@@ -10,7 +10,11 @@ import { Reveal, AnimatedNumber } from "@/components/motion";
 import { DASHBOARD_IMAGE } from "@/lib/images";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Dashboard" };
+export const metadata: Metadata = {
+  title: "Dashboard",
+  description:
+    "The tracked luxury market at a glance: average daily rate, signal distribution, the market trend and live Rate Alerts.",
+};
 
 export default async function DashboardPage() {
   const properties = await getProperties();

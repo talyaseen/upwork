@@ -3,12 +3,17 @@ import { getProperties } from "@/lib/data";
 import { byBestDeal } from "@/lib/rates";
 import { PageHeader } from "@/components/PageHeader";
 import { AlertPreferences } from "@/components/AlertPreferences";
+import { AlertManager } from "@/components/AlertManager";
 import { EmailDigestPreview } from "@/components/EmailDigestPreview";
 import { Reveal } from "@/components/motion";
 import { ALERTS_IMAGE } from "@/lib/images";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Alerts" };
+export const metadata: Metadata = {
+  title: "Alerts",
+  description:
+    "Create and manage rate alerts and preview the AURUM weekly rate-briefing email.",
+};
 
 export default async function AlertsPage() {
   const properties = await getProperties();
@@ -42,6 +47,10 @@ export default async function AlertsPage() {
           </div>
         </Reveal>
       </div>
+
+      <Reveal className="mt-6">
+        <AlertManager />
+      </Reveal>
     </div>
   );
 }

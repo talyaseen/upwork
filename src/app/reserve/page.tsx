@@ -6,7 +6,11 @@ import { ReserveDashboard } from "@/components/ReserveDashboard";
 import { RESERVE_IMAGE } from "@/lib/images";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Reserve" };
+export const metadata: Metadata = {
+  title: "Reserve",
+  description:
+    "The AURUM Reserve loyalty programme: earn credits on every stay, climb the tiers and unlock privileges across the collection.",
+};
 
 function nameFromEmail(email: string | null): string {
   if (!email) return "Aurum Member";

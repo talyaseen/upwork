@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { getProperties, getSavedIds } from "@/lib/data";
 import { byBestDeal } from "@/lib/rates";
@@ -7,6 +8,12 @@ import { IntelligenceLegend } from "@/components/IntelligenceLegend";
 import { Reveal, AnimatedNumber } from "@/components/motion";
 import { HERO_IMAGE, HERO_BLUR } from "@/lib/images";
 import { TAGS } from "@/lib/demo-data";
+
+export const metadata: Metadata = {
+  title: "Briefing",
+  description:
+    "The daily feed of luxury stays with live rate signals, filterable by experience.",
+};
 
 // Reads request cookies (auth) -> always render per-request.
 export const dynamic = "force-dynamic";

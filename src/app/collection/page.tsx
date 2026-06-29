@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Your collection",
+  description:
+    "The luxury stays you have saved to watch, protected by row-level security.",
 };
 
 export default async function CollectionPage() {

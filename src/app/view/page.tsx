@@ -18,7 +18,11 @@ import { Reveal } from "@/components/motion";
 import { VIEW_IMAGE } from "@/lib/images";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "The View" };
+export const metadata: Metadata = {
+  title: "The View",
+  description:
+    "Market intelligence for luxury hotels: brand league tables, destination analysis, seasonality and the rate-versus-signal picture.",
+};
 
 export default async function TheViewPage() {
   const properties = await getProperties();

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { login } from "@/app/auth/actions";
 import { isSupabaseConfigured } from "@/lib/env";
 import { SubmitButton } from "@/components/SubmitButton";
 import { AuthField } from "@/components/AuthField";
+
+export const metadata: Metadata = { title: "Log in" };
 
 interface PageProps {
   searchParams: Promise<{ error?: string; notice?: string; next?: string }>;

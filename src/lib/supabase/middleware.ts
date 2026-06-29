@@ -5,7 +5,7 @@ import { isSupabaseConfigured } from "@/lib/env";
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
 /** Routes that require an authenticated user. */
-const PROTECTED_PREFIXES = ["/collection"];
+const PROTECTED_PREFIXES = ["/collection", "/account"];
 
 /**
  * Refreshes the Supabase auth session on every request and guards protected

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { signup } from "@/app/auth/actions";
 import { isSupabaseConfigured } from "@/lib/env";
 import { SubmitButton } from "@/components/SubmitButton";
 import { AuthField } from "@/components/AuthField";
+
+export const metadata: Metadata = { title: "Create your account" };
 
 interface PageProps {
   searchParams: Promise<{ error?: string }>;

@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/collection", label: "Collection" },
   { href: "/reserve", label: "Reserve" },
   { href: "/alerts", label: "Alerts" },
+  { href: "/account", label: "Account" },
 ];
 
 export function Footer() {
