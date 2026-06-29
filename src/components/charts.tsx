@@ -7,6 +7,7 @@ import type {
   ScatterPoint,
   SeasonRow,
 } from "@/lib/types";
+import { levelMeta } from "@/lib/intelligence";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -266,6 +267,153 @@ export function RateSignalScatter({ points }: { points: ScatterPoint[] }) {
         >
           <title>{`${p.name} - $${p.rateUsd.toLocaleString("en-US")}, ${p.belowPct}% below avg`}</title>
         </motion.circle>
+      ))}
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+//  Signal distribution - properties per intelligence level
+// ---------------------------------------------------------------------------
+export function SignalDistribution({
+  dist,
+}: {
+  dist: { level: number; count: number }[];
+}) {
+  const max = Math.max(1, ...dist.map((d) => d.count));
+  return (
+    <div className="space-y-3">
+      {dist.map((d, i) => {
+        const meta = levelMeta(d.level);
+        return (
+          <div key={d.level} className="flex items-center gap-3">
+            <span className="w-24 shrink-0 text-xs text-white/55">
+              <span className="font-display text-gilt-soft">{meta.short}</span>{" "}
+              {meta.label}
+            </span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/[0.05]">
+              <motion.div
+                initial={{ width: 0 }}
+                whileInView={{ width: `${(d.count / max) * 100}%` }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.9, delay: i * 0.06, ease: EASE }}
+                className="h-full rounded-full bg-gradient-to-r from-gilt-deep to-gilt-soft"
+              />
+            </div>
+            <span className="w-6 shrink-0 text-right text-sm text-white/70">
+              {d.count}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+//  Market trend line (animated draw)
+// ---------------------------------------------------------------------------
+export function MarketTrendLine({
+  values,
+  labels,
+}: {
+  values: number[];
+  labels: string[];
+}) {
+  const W = 720;
+  const H = 280;
+  const padL = 54;
+  const padB = 34;
+  const padT = 18;
+  const padR = 14;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const sx = (i: number) =>
+    padL + (i / Math.max(1, values.length - 1)) * (W - padL - padR);
+  const sy = (v: number) =>
+    H - padB - ((v - min) / (max - min || 1)) * (H - padB - padT);
+
+  const line = values
+    .map((v, i) => `${i === 0 ? "M" : "L"}${sx(i).toFixed(1)},${sy(v).toFixed(1)}`)
+    .join(" ");
+  const area = `${line} L${sx(values.length - 1).toFixed(1)},${H - padB} L${sx(0).toFixed(1)},${H - padB} Z`;
+  const yTicks = [min, Math.round((min + max) / 2), max];
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      className="h-auto w-full"
+      role="img"
+      aria-label="Market average rate trend"
+    >
+      <defs>
+        <linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#c8a25a" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#c8a25a" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {yTicks.map((t) => (
+        <g key={t}>
+          <line
+            x1={padL}
+            y1={sy(t)}
+            x2={W - padR}
+            y2={sy(t)}
+            stroke="rgba(255,255,255,0.06)"
+          />
+          <text x={8} y={sy(t) + 4} fill="rgba(255,255,255,0.4)" fontSize="11">
+            {"$" + t.toLocaleString("en-US")}
+          </text>
+        </g>
+      ))}
+      {labels.map((l, i) =>
+        i % 2 === 0 || i === labels.length - 1 ? (
+          <text
+            key={l}
+            x={sx(i)}
+            y={H - 12}
+            fill="rgba(255,255,255,0.4)"
+            fontSize="10"
+            textAnchor="middle"
+          >
+            {l}
+          </text>
+        ) : null,
+      )}
+      <motion.path
+        d={area}
+        fill="url(#trend-fill)"
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.8, delay: 0.6 }}
+      />
+      <motion.path
+        d={line}
+        fill="none"
+        stroke="#d9bd86"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        initial={{ pathLength: 0 }}
+        whileInView={{ pathLength: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 1.4, ease: EASE }}
+      />
+      {values.map((v, i) => (
+        <motion.circle
+          key={labels[i] ?? i}
+          cx={sx(i)}
+          cy={sy(v)}
+          r="3"
+          fill="#d9bd86"
+          initial={{ scale: 0 }}
+          whileInView={{ scale: 1 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.8 + i * 0.05, duration: 0.3 }}
+        />
       ))}
     </svg>
   );

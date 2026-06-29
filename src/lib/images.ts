@@ -26,4 +26,5 @@ export const VIEW_IMAGE = unsplash("1604147706283-d7119b5b822c", 1800);
 export const RESERVE_IMAGE = unsplash("1551218808-94e220e084d2", 1800);
 export const ALERTS_IMAGE = unsplash("1470337458703-46ad1756a187", 1800);
 export const COLLECTION_IMAGE = unsplash("1518684079-3c830dcef090", 1800);
+export const DASHBOARD_IMAGE = unsplash("1551882547-ff40c63fe5fa", 1800);
 export const SECTION_BLUR = blurDataURL("#0a0a0f", "#241f17");

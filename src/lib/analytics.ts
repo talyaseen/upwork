@@ -5,7 +5,7 @@ import type {
   SeasonRow,
   SignalProperty,
 } from "@/lib/types";
-import { BRANDS, seasonRow } from "@/lib/demo-data";
+import { BRANDS, seasonRow, DEMO_PROPERTIES, demoHistory } from "@/lib/demo-data";
 
 // Indicative FX to normalise rates to USD for cross-market comparison.
 const FX: Record<string, number> = { USD: 1, EUR: 1.08, GBP: 1.27 };
@@ -82,6 +82,29 @@ export function seasonRows(properties: SignalProperty[]): SeasonRow[] {
     rows.push({ destination: p.destination, months: seasonRow(p.destination) });
   }
   return rows.sort((a, b) => a.destination.localeCompare(b.destination));
+}
+
+/**
+ * Indicative market trend: the USD-normalised average nightly rate per capture
+ * date across the tracked set. Derived from the bundled sample history so the
+ * dashboard always renders a trend line.
+ */
+export function marketSeries(): { date: string; avgUsd: number }[] {
+  const dates = demoHistory(DEMO_PROPERTIES[0]?.id ?? "").map(
+    (h) => h.captured_on,
+  );
+  return dates.map((date, i) => {
+    let sum = 0;
+    let count = 0;
+    for (const p of DEMO_PROPERTIES) {
+      const point = demoHistory(p.id)[i];
+      if (point) {
+        sum += toUsd(point.rate, p.currency);
+        count += 1;
+      }
+    }
+    return { date, avgUsd: count ? Math.round(sum / count) : 0 };
+  });
 }
 
 export const MONTH_LABELS = [

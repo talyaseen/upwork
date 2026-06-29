@@ -12,6 +12,7 @@ import { Logo } from "@/components/Logo";
 
 const NAV = [
   { href: "/briefing", label: "Briefing" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/view", label: "The View" },
   { href: "/collection", label: "Collection" },
   { href: "/reserve", label: "Reserve" },
@@ -107,7 +108,7 @@ export function Header() {
         </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden items-center gap-1 text-sm md:flex">
+        <nav className="hidden items-center gap-1 text-sm lg:flex">
           {NAV.map((item) => (
             <NavLink
               key={item.href}
@@ -120,7 +121,7 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <div className="hidden items-center gap-2 md:flex">{auth}</div>
+          <div className="hidden items-center gap-2 lg:flex">{auth}</div>
 
           {/* Mobile menu toggle */}
           <button
@@ -128,7 +129,7 @@ export function Header() {
             onClick={() => setOpen((o) => !o)}
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/80 transition hover:text-white md:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/80 transition hover:text-white lg:hidden"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               {open ? (
@@ -156,7 +157,7 @@ export function Header() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden border-t border-white/[0.06] md:hidden"
+            className="overflow-hidden border-t border-white/[0.06] lg:hidden"
           >
             <nav className="mx-auto flex max-w-6xl flex-col gap-1 px-5 py-4">
               {NAV.map((item) => (

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/env";
+import { credentialsSchema, firstIssue } from "@/lib/validation";
 
 function safeNext(value: FormDataEntryValue | null): string {
   const next = typeof value === "string" ? value : "";
@@ -18,11 +19,18 @@ export async function login(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("demo")}`);
   }
 
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
+  const parsed = credentialsSchema.safeParse({
+    email: String(formData.get("email") ?? ""),
+    password: String(formData.get("password") ?? ""),
+  });
+  if (!parsed.success) {
+    redirect(
+      `/login?error=${encodeURIComponent(firstIssue(parsed.error))}&next=${encodeURIComponent(next)}`,
+    );
+  }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
@@ -37,11 +45,16 @@ export async function signup(formData: FormData) {
     redirect(`/signup?error=${encodeURIComponent("demo")}`);
   }
 
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
+  const parsed = credentialsSchema.safeParse({
+    email: String(formData.get("email") ?? ""),
+    password: String(formData.get("password") ?? ""),
+  });
+  if (!parsed.success) {
+    redirect(`/signup?error=${encodeURIComponent(firstIssue(parsed.error))}`);
+  }
 
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await supabase.auth.signUp(parsed.data);
 
   if (error) {
     redirect(`/signup?error=${encodeURIComponent(error.message)}`);
