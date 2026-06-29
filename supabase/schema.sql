@@ -27,6 +27,8 @@ create table if not exists public.properties (
   accent_from   text        not null default '#1d1d28', -- gradient fallback (from)
   accent_to     text        not null default '#262633', -- gradient fallback (to)
   image_url     text        not null default '',        -- hero photo (Unsplash CDN)
+  brand_id      text        not null default '',        -- references brands(id)
+  tags          text[]      not null default '{}',      -- experience tag ids
   created_at    timestamptz not null default now()
 );
 
@@ -91,3 +93,33 @@ drop policy if exists "users remove from their own collection" on public.collect
 create policy "users remove from their own collection"
   on public.collections for delete
   using (auth.uid() = user_id);
+
+-- =============================================================================
+--  Reference data: brands (hotel groups) and experience tags. Both are
+--  world-readable. The running app also ships these as bundled reference data
+--  so it renders without a backend.
+-- =============================================================================
+create table if not exists public.brands (
+  id          text    primary key,
+  name        text    not null,
+  origin      text    not null default '',
+  founded     int,
+  description text    not null default ''
+);
+
+create table if not exists public.tags (
+  id        text primary key,
+  label     text not null,
+  category  text not null default 'Experience' -- Setting | Style | Experience
+);
+
+alter table public.brands enable row level security;
+alter table public.tags   enable row level security;
+
+drop policy if exists "brands are publicly readable" on public.brands;
+create policy "brands are publicly readable"
+  on public.brands for select using (true);
+
+drop policy if exists "tags are publicly readable" on public.tags;
+create policy "tags are publicly readable"
+  on public.tags for select using (true);

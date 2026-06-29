@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getProperty, getSavedIds } from "@/lib/data";
+import { getProperty, getProperties, getSavedIds } from "@/lib/data";
 import { computeSignal } from "@/lib/rates";
 import { formatRate, formatShortDate } from "@/lib/format";
+import { BRANDS, tagLabel } from "@/lib/demo-data";
 import { SignalBadge } from "@/components/SignalBadge";
 import { StarRating } from "@/components/StarRating";
+import { LevelBadge } from "@/components/LevelBadge";
 import { Sparkline } from "@/components/Sparkline";
 import { BookingButtons } from "@/components/BookingButtons";
 import { SaveButton } from "@/components/SaveButton";
 import { PropertyImage } from "@/components/PropertyImage";
+import { MiniPropertyRow } from "@/components/MiniPropertyRow";
+import { Reveal, AnimatedNumber } from "@/components/motion";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +35,10 @@ export async function generateMetadata({
 
 export default async function PropertyPage({ params }: PageProps) {
   const { id } = await params;
-  const [property, savedIds] = await Promise.all([
+  const [property, savedIds, all] = await Promise.all([
     getProperty(id),
     getSavedIds(),
+    getProperties(),
   ]);
 
   if (!property) notFound();
@@ -41,8 +46,15 @@ export default async function PropertyPage({ params }: PageProps) {
   const signal = computeSignal(property.current_rate, property.avg_rate);
   const accentColor = "#c8a25a"; // champagne gold - the single metallic accent
   const series = property.history.map((h) => h.rate);
+  const brand = BRANDS.find((b) => b.id === property.brand_id);
 
-  // Build a latest-first history list with the change vs the previous capture.
+  const brandPeers = all.filter(
+    (p) => p.brand_id === property.brand_id && p.id !== property.id,
+  );
+  const destPeers = all.filter(
+    (p) => p.destination === property.destination && p.id !== property.id,
+  );
+
   const rows = property.history
     .map((point, i) => ({
       ...point,
@@ -51,13 +63,13 @@ export default async function PropertyPage({ params }: PageProps) {
     .reverse();
 
   return (
-    <div className="mx-auto max-w-6xl px-5 pb-10">
+    <div className="mx-auto max-w-6xl px-5 pb-12">
       <div className="pt-8">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-sm text-white/50 transition hover:text-white"
         >
-          <span aria-hidden="true">←</span> Back to all stays
+          <span aria-hidden="true">←</span> Back to the briefing
         </Link>
       </div>
 
@@ -71,11 +83,17 @@ export default async function PropertyPage({ params }: PageProps) {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-ink-900/92 via-ink-900/45 to-ink-900/15" />
         <div className="relative flex min-h-[340px] flex-col justify-end gap-3 p-6 sm:min-h-[440px] sm:p-10">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <StarRating count={property.star_rating} />
             <span className="text-[11px] uppercase tracking-luxe text-white/65">
               {property.destination}, {property.country}
             </span>
+            {brand && (
+              <span className="rounded-full border border-white/15 bg-ink-900/40 px-2.5 py-0.5 text-[11px] text-white/70 backdrop-blur">
+                {brand.name}
+              </span>
+            )}
+            <LevelBadge level={signal.level} />
           </div>
           <h1 className="max-w-2xl font-display text-3xl leading-tight text-white sm:text-5xl">
             {property.name}
@@ -83,16 +101,23 @@ export default async function PropertyPage({ params }: PageProps) {
           <p className="max-w-2xl text-balance text-white/70">
             {property.description}
           </p>
-          <div className="pt-1">
-            <SignalBadge signal={signal} />
+          <div className="flex flex-wrap gap-2 pt-1">
+            {property.tags.map((t) => (
+              <span
+                key={t}
+                className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-0.5 text-[11px] text-white/55"
+              >
+                {tagLabel(t)}
+              </span>
+            ))}
           </div>
         </div>
       </header>
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Rate history */}
-        <section className="lg:col-span-2">
-          <div className="rounded-3xl border border-white/[0.08] bg-ink-700/60 p-6">
+        <Reveal className="lg:col-span-2">
+          <section className="rounded-3xl border border-white/[0.08] bg-ink-700/60 p-6">
             <div className="flex items-end justify-between">
               <div>
                 <h2 className="font-display text-xl text-white">Rate history</h2>
@@ -155,20 +180,22 @@ export default async function PropertyPage({ params }: PageProps) {
                 );
               })}
             </ul>
-          </div>
-        </section>
+          </section>
+        </Reveal>
 
         {/* Booking panel */}
-        <aside className="lg:col-span-1">
-          <div className="lg:sticky lg:top-20">
+        <Reveal className="lg:col-span-1" delay={0.05}>
+          <aside className="lg:sticky lg:top-20">
             <div className="rounded-3xl border border-white/[0.08] bg-ink-700/60 p-6">
               <p className="text-[10px] uppercase tracking-luxe text-white/40">
                 Current prepaid / night
               </p>
               <div className="mt-1 flex items-end gap-3">
-                <span className="font-display text-4xl text-white">
-                  {formatRate(property.current_rate, property.currency)}
-                </span>
+                <AnimatedNumber
+                  value={property.current_rate}
+                  currency={property.currency}
+                  className="font-display text-4xl text-white"
+                />
                 <span className="pb-1.5 text-sm text-white/40 line-through">
                   {formatRate(property.avg_rate, property.currency)}
                 </span>
@@ -201,9 +228,47 @@ export default async function PropertyPage({ params }: PageProps) {
               </p>
               <BookingButtons property={property} />
             </div>
-          </div>
-        </aside>
+          </aside>
+        </Reveal>
       </div>
+
+      {/* Comparison */}
+      {(brandPeers.length > 0 || destPeers.length > 0) && (
+        <Reveal className="mt-6">
+          <section className="rounded-3xl border border-white/[0.08] bg-ink-700/60 p-6 sm:p-7">
+            <h2 className="font-display text-xl text-white">How it compares</h2>
+            <p className="mt-1 text-sm text-white/45">
+              Other stays in the same brand and destination.
+            </p>
+            <div className="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {brandPeers.length > 0 && (
+                <div>
+                  <p className="mb-3 text-[11px] uppercase tracking-luxe text-white/40">
+                    {brand?.name ?? "Brand"} collection
+                  </p>
+                  <div className="space-y-2.5">
+                    {brandPeers.map((p) => (
+                      <MiniPropertyRow key={p.id} property={p} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {destPeers.length > 0 && (
+                <div>
+                  <p className="mb-3 text-[11px] uppercase tracking-luxe text-white/40">
+                    Also in {property.destination}
+                  </p>
+                  <div className="space-y-2.5">
+                    {destPeers.map((p) => (
+                      <MiniPropertyRow key={p.id} property={p} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        </Reveal>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import type { SignalProperty } from "@/lib/types";
 import { formatRate } from "@/lib/format";
 import { SignalBadge } from "@/components/SignalBadge";
 import { StarRating } from "@/components/StarRating";
+import { LevelBadge } from "@/components/LevelBadge";
 import { PropertyImage } from "@/components/PropertyImage";
 
 interface Props {
@@ -71,7 +72,7 @@ export function PropertyCard({ property, saved = false, priority = false }: Prop
         </div>
         <div className="flex flex-col items-end gap-2">
           <StarRating count={property.star_rating} />
-          {!signal.isAlert && <SignalBadge signal={signal} />}
+          <LevelBadge level={signal.level} />
         </div>
       </div>
     </Link>

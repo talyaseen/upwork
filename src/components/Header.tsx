@@ -9,6 +9,14 @@ import { isSupabaseConfigured } from "@/lib/env";
 import { signout } from "@/app/auth/actions";
 import { Logo } from "@/components/Logo";
 
+const NAV = [
+  { href: "/", label: "Briefing" },
+  { href: "/the-view", label: "The View" },
+  { href: "/collection", label: "Collection" },
+  { href: "/reserve", label: "Reserve" },
+  { href: "/alerts", label: "Alerts" },
+];
+
 export function Header() {
   const pathname = usePathname();
   const configured = isSupabaseConfigured();
@@ -44,8 +52,8 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-ink-900/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5">
-        <Link href="/" className="flex items-center gap-2.5">
+      <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-5">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5">
           <Logo />
           <span className="flex flex-col leading-none">
             <span className="font-display text-lg tracking-wide text-white">
@@ -57,16 +65,19 @@ export function Header() {
           </span>
         </Link>
 
-        <nav className="flex items-center gap-1 text-sm">
-          <NavLink href="/" active={isActive("/")}>
-            Discover
-          </NavLink>
-          <NavLink href="/collection" active={isActive("/collection")}>
-            Collection
-          </NavLink>
+        <nav className="no-scrollbar flex flex-1 items-center gap-1 overflow-x-auto text-sm">
+          {NAV.map((item) => (
+            <NavLink
+              key={item.href}
+              href={item.href}
+              active={isActive(item.href)}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
 
-          <span className="mx-2 hidden h-5 w-px bg-white/10 sm:block" />
-
+        <div className="flex shrink-0 items-center gap-2">
           {!configured ? (
             <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/45">
               Demo mode
@@ -84,9 +95,12 @@ export function Header() {
             </form>
           ) : (
             <>
-              <NavLink href="/login" active={isActive("/login")}>
+              <Link
+                href="/login"
+                className="hidden rounded-full px-3 py-1.5 text-sm text-white/60 transition hover:text-white sm:block"
+              >
                 Log in
-              </NavLink>
+              </Link>
               <Link
                 href="/signup"
                 className="rounded-full bg-gilt px-4 py-1.5 text-sm font-medium text-ink-900 transition hover:bg-gilt-soft"
@@ -95,7 +109,7 @@ export function Header() {
               </Link>
             </>
           )}
-        </nav>
+        </div>
       </div>
     </header>
   );
@@ -113,10 +127,8 @@ function NavLink({
   return (
     <Link
       href={href}
-      className={`rounded-full px-3 py-1.5 transition ${
-        active
-          ? "bg-white/[0.06] text-white"
-          : "text-white/60 hover:text-white"
+      className={`whitespace-nowrap rounded-full px-3 py-1.5 transition ${
+        active ? "bg-white/[0.06] text-white" : "text-white/60 hover:text-white"
       }`}
     >
       {children}

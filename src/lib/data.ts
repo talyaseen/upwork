@@ -16,7 +16,7 @@ import type {
 
 // Columns selected for a property row.
 const PROPERTY_COLUMNS =
-  "id, name, destination, country, description, star_rating, current_rate, avg_rate, currency, accent_from, accent_to, image_url";
+  "id, name, destination, country, description, star_rating, current_rate, avg_rate, currency, accent_from, accent_to, image_url, brand_id, tags";
 
 /** Coerce a raw Supabase row into a strongly-typed Property (numeric safety). */
 function mapProperty(row: Record<string, unknown>): Property {
@@ -33,6 +33,8 @@ function mapProperty(row: Record<string, unknown>): Property {
     accent_from: String(row.accent_from ?? "#1d1d28"),
     accent_to: String(row.accent_to ?? "#262633"),
     image_url: String(row.image_url ?? ""),
+    brand_id: String(row.brand_id ?? ""),
+    tags: Array.isArray(row.tags) ? (row.tags as unknown[]).map(String) : [],
   };
 }
 

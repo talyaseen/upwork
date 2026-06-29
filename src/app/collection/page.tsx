@@ -4,6 +4,7 @@ import { getCollection, getSessionEmail } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/env";
 import { PropertyCard } from "@/components/PropertyCard";
 import { SaveButton } from "@/components/SaveButton";
+import { Stagger, StaggerItem } from "@/components/motion";
 
 export const dynamic = "force-dynamic";
 
@@ -72,9 +73,9 @@ async function CollectionList() {
         {collection.length} saved {collection.length === 1 ? "stay" : "stays"}
       </p>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <Stagger className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {collection.map((property) => (
-          <div key={property.id} className="relative">
+          <StaggerItem key={property.id} className="relative">
             <PropertyCard property={property} />
             <div className="absolute right-3 top-3 z-10">
               <SaveButton
@@ -84,9 +85,9 @@ async function CollectionList() {
                 variant="icon"
               />
             </div>
-          </div>
+          </StaggerItem>
         ))}
-      </div>
+      </Stagger>
     </>
   );
 }
