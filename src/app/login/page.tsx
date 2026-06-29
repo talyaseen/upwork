@@ -37,7 +37,9 @@ export default async function LoginPage({ searchParams }: PageProps) {
           <p className="mt-5 rounded-xl border border-red-400/25 bg-red-400/[0.06] px-4 py-3 text-sm text-red-200">
             {error === "demo"
               ? "Authentication is disabled in demo mode. Connect Supabase to continue."
-              : error}
+              : error === "demo-unavailable"
+                ? "The demo account is not available right now. Please sign in or create an account."
+                : error}
           </p>
         )}
 
@@ -58,9 +60,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
               </SubmitButton>
             </form>
             <p className="mt-2 text-center text-xs text-white/40">
-              Signs you in as{" "}
-              <span className="text-white/60">demo@aurumrates.app</span> with a
-              saved collection.
+              One click, no signup required, with a saved collection to explore.
             </p>
             <div className="my-6 flex items-center gap-3 text-xs text-white/30">
               <span className="h-px flex-1 bg-white/10" />
