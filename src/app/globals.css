@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-ink-900 font-sans text-white/90 antialiased;
+    background-image:
+      radial-gradient(1100px 560px at 50% -12%, rgba(200, 162, 90, 0.1), transparent 62%),
+      radial-gradient(820px 520px at 102% -4%, rgba(86, 96, 168, 0.08), transparent 58%);
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: rgba(200, 162, 90, 0.26);
+    color: #fff;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* slim, unobtrusive scrollbar to match the dark theme */
+  .scroll-luxe::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-luxe::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+  }
+  .scroll-luxe::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+}
