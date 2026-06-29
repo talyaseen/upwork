@@ -125,3 +125,47 @@ export interface LoyaltyAccount {
   history: LoyaltyActivity[];
   perks: string[];
 }
+
+// ---------------------------------------------------------------------------
+//  Rates & packages / booking
+// ---------------------------------------------------------------------------
+
+export interface RoomType {
+  id: string;
+  name: string;
+  description: string;
+  /** multiplier applied to the property's base nightly rate */
+  multiplier: number;
+  maxOccupancy: number;
+  beds: string;
+  sizeSqm: number;
+  accent_from: string;
+  accent_to: string;
+}
+
+export interface StayPackage {
+  id: string;
+  name: string;
+  description: string;
+  /** added per night */
+  perNight: number;
+  /** added once per stay */
+  flat: number;
+}
+
+export interface QuoteNight {
+  date: string; // ISO date of the night
+  weekend: boolean;
+  rate: number;
+}
+
+export interface StayQuote {
+  nights: QuoteNight[];
+  nightsCount: number;
+  roomSubtotal: number;
+  packageTotal: number;
+  taxes: number;
+  fees: number;
+  grandTotal: number;
+  currency: string;
+}

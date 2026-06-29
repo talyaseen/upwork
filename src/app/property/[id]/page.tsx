@@ -13,6 +13,8 @@ import { BookingButtons } from "@/components/BookingButtons";
 import { SaveButton } from "@/components/SaveButton";
 import { PropertyImage } from "@/components/PropertyImage";
 import { MiniPropertyRow } from "@/components/MiniPropertyRow";
+import { BookingWidget } from "@/components/BookingWidget";
+import { getRoomTypes, PACKAGES } from "@/lib/booking-data";
 import { Reveal, AnimatedNumber } from "@/components/motion";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +56,7 @@ export default async function PropertyPage({ params }: PageProps) {
   const destPeers = all.filter(
     (p) => p.destination === property.destination && p.id !== property.id,
   );
+  const rooms = getRoomTypes(property);
 
   const rows = property.history
     .map((point, i) => ({
@@ -231,6 +234,11 @@ export default async function PropertyPage({ params }: PageProps) {
           </aside>
         </Reveal>
       </div>
+
+      {/* Rates & packages + booking calculator */}
+      <Reveal className="mt-6">
+        <BookingWidget property={property} rooms={rooms} packages={PACKAGES} />
+      </Reveal>
 
       {/* Comparison */}
       {(brandPeers.length > 0 || destPeers.length > 0) && (
