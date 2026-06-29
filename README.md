@@ -1,15 +1,24 @@
 # AURUM - Rate Intelligence for Luxury Stays
 
-A polished, animated demo of a luxury-hotel **rate-intelligence platform**. It
-tracks the prepaid nightly rate of the world's finest hotels, grades each rate
-against its own history across **five intelligence levels**, surfaces market
-intelligence (brand league tables, destination analysis, seasonality and a
-rate-versus-signal view), and wraps it all in a loyalty programme, a saved
-collection and a rate-alert system.
+> A working, production-grade demo of a luxury-hotel **rate-intelligence
+> platform**, built end to end to show craft with the modern Next.js + Supabase
+> stack.
 
-Built with the production stack it is meant to prove out: **Next.js (App
-Router) + TypeScript + Tailwind CSS + Supabase** (Postgres, cookie-based auth
-via `@supabase/ssr`, Row Level Security), with **Framer Motion** throughout.
+AURUM tracks the prepaid nightly rate of the world's finest hotels, grades each
+rate against its own history across **five intelligence levels**, surfaces
+market intelligence (brand league tables, destination analysis, seasonality and
+a rate-versus-signal view), and wraps it all in a loyalty programme, a saved
+collection and a rate-alert system, in a refined champagne-and-ink interface
+that is animated throughout and flawless down to 375px.
+
+Built with the production stack it is meant to prove out: **Next.js 15 (App
+Router) + TypeScript (strict) + Tailwind CSS + Supabase** (Postgres,
+cookie-based SSR auth via `@supabase/ssr`, Row Level Security), with **Framer
+Motion** for motion design.
+
+It runs with **zero configuration**: with no Supabase keys, it falls back to a
+bundled, typed sample dataset and renders the entire product, so the live demo
+always works.
 
 > The hotels, brands and destinations are real. The rates, rate history and
 > loyalty figures are illustrative sample data for demonstration only, not live
@@ -22,7 +31,7 @@ via `@supabase/ssr`, Row Level Security), with **Framer Motion** throughout.
 | Area | Route | What it does |
 | --- | --- | --- |
 | **Briefing** | `/` | The daily feed of luxury stays with live rate signals, filterable by ~20 thematic experience tags. Cinematic ken-burns hero, animated counters, staggered card reveals. |
-| **The View** | `/the-view` | Market intelligence: an animated **brand league table**, **destination analysis**, a **seasonal heat map**, and a **rate-vs-signal scatter plot**. |
+| **The View** | `/view` | Market intelligence: an animated **brand league table**, **destination analysis**, a **seasonal heat map**, and a **rate-vs-signal scatter plot**. |
 | **Collection** | `/collection` | A signed-in user's saved stays, persisted to Supabase and protected by Row Level Security. |
 | **Reserve** | `/reserve` | A loyalty dashboard: tier ladder, animated credit counter, progress to the next tier, activity and privileges (sample membership). |
 | **Property Intelligence** | `/property/[id]` | Per-property rate history (inline SVG sparkline), signal + intelligence level, brand and destination comparison, and booking buttons. |
@@ -148,7 +157,7 @@ Open <http://localhost:3000>.
     ├── app/
     │   ├── layout.tsx · template.tsx   # shell + route transitions
     │   ├── page.tsx                    # Briefing (feed + tag filter)
-    │   ├── the-view/                   # market intelligence
+    │   ├── view/                        # market intelligence
     │   ├── reserve/                    # loyalty dashboard
     │   ├── alerts/                     # alert preferences + email preview
     │   ├── collection/                 # saved stays (RLS)
@@ -189,6 +198,25 @@ The percentage below average maps to an intelligence level:
 Thresholds live in `src/lib/intelligence.ts` and `src/lib/rates.ts`.
 
 ---
+
+## Architecture notes
+
+- **App Router, server-first.** Pages are React Server Components that read data
+  on the server; interactivity (auth state, tag filtering, charts, motion) lives
+  in small Client Component islands. Mutations use **Server Actions**
+  (`src/app/auth/actions.ts`).
+- **Supabase SSR auth.** Three clients (`browser`, `server`, `middleware`) wire
+  Supabase's cookie sessions through Next via `@supabase/ssr`. `middleware.ts`
+  refreshes the session on every request and guards protected routes.
+- **Row Level Security.** `collections` rows are owned by `auth.uid()`;
+  `properties`, `rate_history`, `brands` and `tags` are world-readable. Policies
+  live in `supabase/schema.sql`.
+- **Typed data layer with graceful fallback.** `src/lib/data.ts` is the single
+  repository: it prefers Supabase and falls back to the bundled, typed sample
+  dataset when unconfigured or on error, so the UI always renders. No `any` in
+  the domain types (`src/lib/types.ts`).
+- **No build-time network.** Charts are hand-rolled SVG; imagery loads at
+  runtime from the Unsplash CDN behind a gradient/blur fallback.
 
 ## Notes
 
