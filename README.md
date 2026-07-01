@@ -20,6 +20,8 @@ AI-First chat assistant with RAG (grounded Q&A with citations), a code-review sk
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white)
 ![Flutter](https://img.shields.io/badge/Flutter-02569B?style=flat&logo=flutter&logoColor=white)
+![RAG](https://img.shields.io/badge/RAG-6E56CF?style=flat)
+![LLM](https://img.shields.io/badge/LLM-FF6F00?style=flat)
 
 - 🔗 Live: [chat.joltingbolt.com](https://chat.joltingbolt.com)
 - 📂 Source: [`fastapi-ai-devtools-demo`](https://github.com/talyaseen/upwork/tree/fastapi-ai-devtools-demo)
@@ -35,6 +37,7 @@ Hotel rate intelligence platform with authentication and a personal saved-rates 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat&logo=supabase&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-000000?style=flat&logo=vercel&logoColor=white)
 
 - 🔗 Live: [hotel-rate-intelligence.vercel.app](https://hotel-rate-intelligence.vercel.app)
 - 📂 Source: [`hotel-nextjs-supabase`](https://github.com/talyaseen/upwork/tree/hotel-nextjs-supabase)
