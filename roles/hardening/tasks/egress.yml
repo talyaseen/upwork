@@ -1,0 +1,95 @@
+---
+# Egress filtering: ufw default-deny OUTGOING with a tight allowlist.
+#
+# CRITICAL ORDERING: this file is imported LAST by tasks/main.yml, after every
+# package install in the role (and after edge_base's inbound rules). We add the
+# allow-out rules FIRST and only then flip the default outgoing policy to deny, so
+# apt / unattended-upgrades / the CF IP-range fetch never break mid-run.
+#
+# No Maltrail (too heavy for 1 GB; detection-not-prevention; CF fronts the box).
+
+- name: Ensure ufw is installed (owned by edge_base; assert here for standalone runs)
+  ansible.builtin.package:
+    name: ufw
+    state: present
+
+# --- Allow-out rules FIRST (before the default-deny flip) ---
+- name: Allow outbound DNS (53)
+  community.general.ufw:
+    rule: allow
+    direction: out
+    to_port: "53"
+    proto: "{{ item }}"
+    comment: "egress: DNS (Ansible-managed)"
+  loop:
+    - udp
+    - tcp
+  when: hardening_egress_allow_dns | bool
+
+- name: Allow outbound NTP (123/udp)
+  community.general.ufw:
+    rule: allow
+    direction: out
+    to_port: "123"
+    proto: udp
+    comment: "egress: NTP time sync (Ansible-managed)"
+  when: hardening_egress_allow_ntp | bool
+
+- name: Allow outbound HTTP/HTTPS (apt + unattended-upgrades + CF IP-range fetch)
+  community.general.ufw:
+    rule: allow
+    direction: out
+    to_port: "{{ item }}"
+    proto: tcp
+    comment: "egress: apt/updates + CF range fetch (Ansible-managed)"
+  loop:
+    - "80"
+    - "443"
+  when: hardening_egress_allow_http | bool
+
+- name: Allow outbound to the hub mTLS upstream (vaulted IP:port)
+  community.general.ufw:
+    rule: allow
+    direction: out
+    to_ip: "{{ hub_backend_ip }}"
+    to_port: "{{ hub_mtls_port | string }}"
+    proto: tcp
+    comment: "egress: reverse-proxy -> hub mTLS (Ansible-managed)"
+  when:
+    - hardening_egress_allow_hub | bool
+    - vault_hub_backend_ip is defined
+    - "'FILL_ME' not in (vault_hub_backend_ip | string)"
+
+- name: Warn if the hub egress rule was skipped (hub IP not yet provided)
+  ansible.builtin.debug:
+    msg: >-
+      Hub egress allow-rule SKIPPED: vault_hub_backend_ip is not set (or is a
+      FILL_ME). Fine during the hardening-only phase, but the reverse proxy will
+      NOT reach the hub until you set vault_hub_backend_ip in vault.local.yml and
+      re-run harden.yml (or add it manually - see RUNBOOK "egress exception").
+  when:
+    - hardening_egress_allow_hub | bool
+    - (vault_hub_backend_ip is not defined) or ('FILL_ME' in (vault_hub_backend_ip | default('FILL_ME') | string))
+
+- name: Allow any operator-defined extra outbound rules
+  community.general.ufw:
+    rule: allow
+    direction: out
+    to_ip: "{{ item.to_ip | default('any') }}"
+    to_port: "{{ item.port | string }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    comment: "egress: operator extra rule (Ansible-managed)"
+  loop: "{{ hardening_egress_extra_rules }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto | default('tcp') }}"
+
+# --- Flip the default outgoing policy to DENY (LAST) ---
+- name: Set default policy - deny outgoing (egress lockdown)
+  community.general.ufw:
+    direction: outgoing
+    policy: deny
+
+- name: Ensure ufw is enabled with logging
+  community.general.ufw:
+    state: enabled
+    logging: "on"

@@ -1,0 +1,33 @@
+---
+# Handlers run in DEFINITION order (not notification order), so the full-config
+# validation below always runs before the reload - a second safety net on top of
+# the template's pre-install `sshd -t -f` validate.
+
+- name: Validate full sshd config
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+  listen: Reload ssh
+
+- name: Reload ssh service
+  ansible.builtin.systemd:
+    name: ssh
+    state: reloaded
+  listen: Reload ssh
+
+- name: Restart fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: restarted
+    enabled: true
+
+- name: Reload sysctl
+  ansible.builtin.command: sysctl --system
+  changed_when: true
+
+- name: Remount run shm
+  ansible.posix.mount:
+    path: /run/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "defaults,noexec,nosuid,nodev"
+    state: remounted

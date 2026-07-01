@@ -1,0 +1,116 @@
+---
+# ============================================================================
+# PREP / DO-NOT-APPLY until after `go`.
+#
+# Hub-side nginx that fronts the FastAPI app (127.0.0.1:{{ hub_app_port }}) and
+# terminates the edge -> hub MUTUAL-TLS leg. It listens on hub_mtls_port and
+# REQUIRES edge's client cert (ssl_verify_client on against the shared edge
+# CA), so ONLY edge - presenting the 1:1 pair - can reach the backend. nginx
+# then proxies cleartext on loopback to FastAPI.
+#
+# The hub's own IP is never needed here (it binds locally) and never appears in
+# any committed file. Private keys are gitignored/vaulted; the existing 1:1 pair
+# is referenced by path and installed only if *_content vars are supplied.
+#
+# This role is TEMPLATED and SYNTAX-CHECKED but NOT applied until the operator
+# says go. Dry-run with --check first (see playbooks/hub.yml header).
+# ============================================================================
+
+- name: Assert mTLS server identity variables are set
+  ansible.builtin.assert:
+    that:
+      - hub_mtls_port is defined
+      - hub_app_port is defined
+      - hub_mtls_server_name is defined
+    fail_msg: "hub_mtls_port, hub_app_port and hub_mtls_server_name must be set."
+
+- name: Install nginx
+  ansible.builtin.package:
+    name: nginx
+    state: present
+
+- name: Ensure the mTLS dir exists
+  ansible.builtin.file:
+    path: "{{ mtls_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+# Install the hub server cert/key + the shared mTLS CA only if PEM content was
+# supplied in vault; otherwise the existing 1:1 pair at these paths is reused.
+- name: Install the hub mTLS server certificate (only if content supplied)
+  ansible.builtin.copy:
+    content: "{{ hub_mtls_server_cert_content }}"
+    dest: "{{ hub_mtls_server_cert_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: hub_mtls_server_cert_content is defined and 'FILL_ME' not in hub_mtls_server_cert_content
+  notify: Reload nginx
+
+- name: Install the hub mTLS server private key (only if content supplied)
+  ansible.builtin.copy:
+    content: "{{ hub_mtls_server_key_content }}"
+    dest: "{{ hub_mtls_server_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: hub_mtls_server_key_content is defined and 'FILL_ME' not in hub_mtls_server_key_content
+  notify: Reload nginx
+
+- name: Install the shared mTLS CA on the hub (only if content supplied)
+  ansible.builtin.copy:
+    content: "{{ mtls_ca_content }}"
+    dest: "{{ mtls_ca_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: mtls_ca_content is defined and 'FILL_ME' not in mtls_ca_content
+  notify: Reload nginx
+
+- name: Verify the hub mTLS material is present
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: _hub_mtls_stat
+  loop:
+    - "{{ hub_mtls_server_cert_path }}"
+    - "{{ hub_mtls_server_key_path }}"
+    - "{{ mtls_ca_path }}"
+
+- name: Fail early if any hub mTLS file is missing
+  ansible.builtin.assert:
+    that:
+      - _hub_mtls_stat.results | selectattr('stat.exists', 'equalto', false) | list | length == 0
+    fail_msg: >-
+      Hub mutual-TLS material missing
+      ({{ _hub_mtls_stat.results | selectattr('stat.exists', 'equalto', false)
+          | map(attribute='item') | list | join(', ') }}).
+      Place the existing 1:1 pair at those paths or supply the *_content vars.
+
+- name: Deploy the hub mTLS nginx vhost (requires edge client cert)
+  ansible.builtin.template:
+    src: hub-mtls.conf.j2
+    dest: "/etc/nginx/sites-available/hub-mtls.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable the hub mTLS vhost
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/hub-mtls.conf"
+    dest: "/etc/nginx/sites-enabled/hub-mtls.conf"
+    state: link
+  notify: Reload nginx
+
+- name: Validate the nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Ensure nginx is running and enabled
+  ansible.builtin.systemd:
+    name: nginx
+    state: started
+    enabled: true

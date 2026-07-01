@@ -1,0 +1,42 @@
+---
+# fail2ban: aggressive sshd jail always; nginx jails only when nginx is present
+# (auto-detected so this role stays independent of the later proxy phase).
+
+- name: Install fail2ban
+  ansible.builtin.package:
+    name: fail2ban
+    state: present
+
+- name: Detect whether nginx is installed (gate the nginx jails)
+  ansible.builtin.stat:
+    path: /etc/nginx
+  register: _hardening_nginx_dir
+
+- name: Record nginx presence for the jail template
+  ansible.builtin.set_fact:
+    _hardening_nginx_present: "{{ hardening_fail2ban_nginx_jails | bool and _hardening_nginx_dir.stat.exists }}"
+
+- name: Ensure fail2ban log target exists (systemd backend reads the journal)
+  ansible.builtin.file:
+    path: /var/log/fail2ban.log
+    state: touch
+    owner: root
+    group: root
+    mode: "0640"
+    modification_time: preserve
+    access_time: preserve
+
+- name: Deploy fail2ban jail.local
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Enable and start fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started

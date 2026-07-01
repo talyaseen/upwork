@@ -1,0 +1,28 @@
+---
+# ============================================================================
+# HARDEN - run AFTER playbooks/bootstrap.yml has installed + VERIFIED the key.
+#
+# Connects over the verified key (inventory connection) as deploy and
+# applies:
+#   1. edge_base  - ufw deny-by-default (22 + 443-from-Cloudflare-only). The
+#                     firewall is owned here, NOT re-implemented in `hardening`.
+#   2. hardening    - sshd key-only + fail2ban + unattended security upgrades +
+#                     sysctl + security baseline. Disables password auth LAST,
+#                     only after asserting an authorized key is present.
+#
+#   ansible-playbook playbooks/harden.yml --check --diff   # dry run
+#   ansible-playbook playbooks/harden.yml                  # apply
+# ============================================================================
+- name: Harden edge-01 (base firewall + host hardening)
+  hosts: edge
+  become: true
+  gather_facts: true
+  vars:
+    # If passwordless sudo was NOT configured at bootstrap, fall back to the
+    # initial password for privilege escalation. Unused (omit) when NOPASSWD is set.
+    ansible_become_password: >-
+      {{ omit if (edge_host_passwordless_sudo | default(true) | bool)
+         else edge_host_initial_password }}
+  roles:
+    - role: edge_base
+    - role: hardening

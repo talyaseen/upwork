@@ -1,0 +1,71 @@
+---
+# FLOOD-ONLY backstop on the chat demo's /api/* - fires only at clearly-abusive
+# rates (default 120 req/min/IP) to stop one IP flooding/starving the backend
+# queue. NOT a normal-usage limit and NOT a login gate; CF Security High + Bot
+# Fight + the backend queue are the primary defenses. Managed via the zone's
+# http_ratelimit ruleset phase entrypoint.
+
+- name: Get the rate-limit phase entrypoint for the zone
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/rulesets/phases/http_ratelimit/entrypoint"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    return_content: true
+    status_code: [200, 404]
+  register: _cf_rl_ep
+  no_log: true
+
+- name: Build the rate-limit rule
+  ansible.builtin.set_fact:
+    _rl_rules:
+      - action: "{{ cloudflare_ratelimit_action }}"
+        description: "chat /api anti-flood backstop (abuse-rate only, not a usage cap)"
+        expression: >-
+          (http.host eq "{{ demo_fqdn }}" and starts_with(http.request.uri.path, "{{ api_location }}"))
+        enabled: true
+        ratelimit:
+          characteristics:
+            - "ip.src"
+            # Free plan REQUIRES cf.colo.id (rate-limit counting is per-colo, not
+            # global) - CF returns error 20155 without it. Harmless on paid plans.
+            - "cf.colo.id"
+          period: "{{ cloudflare_ratelimit_period | int }}"
+          requests_per_period: "{{ cloudflare_ratelimit_requests | int }}"
+          mitigation_timeout: "{{ cloudflare_ratelimit_mitigation_timeout | int }}"
+
+- name: Update the existing rate-limit ruleset (PUT rules)
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/rulesets/{{ _cf_rl_ep.json.result.id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      rules: "{{ _rl_rules }}"
+    status_code: [200]
+  no_log: true
+  when:
+    - _cf_rl_ep.status == 200
+    - _cf_rl_ep.json.result.id is defined
+
+- name: Create the rate-limit ruleset (when no entrypoint exists)
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/rulesets"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      name: "example demo rate limiting"
+      kind: "zone"
+      phase: "http_ratelimit"
+      rules: "{{ _rl_rules }}"
+    status_code: [200, 201]
+  no_log: true
+  when: >-
+    _cf_rl_ep.status == 404
+    or _cf_rl_ep.json.result.id is not defined

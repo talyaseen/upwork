@@ -1,0 +1,65 @@
+# {{ ansible_managed }}
+# Kernel / network hardening for edge-01. Managed by the hardening role.
+
+# --- Reverse-path filtering (anti-spoofing) ---
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+
+# --- SYN flood protection ---
+net.ipv4.tcp_syncookies = 1
+
+# --- Ignore / do not send ICMP redirects ---
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+
+# --- Disable source routing ---
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv6.conf.default.accept_source_route = 0
+
+# --- Log martian packets ---
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+
+# --- ICMP / broadcast hardening ---
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+
+# --- ARP hardening ---
+net.ipv4.conf.all.arp_ignore = 1
+net.ipv4.conf.all.arp_announce = 2
+
+{% if hardening_sysctl_ipv6_disable_accept_ra | bool %}
+# --- IPv6 Router Advertisements (disabled by request; static IPv6 only) ---
+net.ipv6.conf.all.accept_ra = 0
+net.ipv6.conf.default.accept_ra = 0
+{% endif %}
+
+# --- Kernel pointer / dmesg / ptrace restrictions ---
+kernel.kptr_restrict = 2
+kernel.dmesg_restrict = 1
+kernel.yama.ptrace_scope = 1
+kernel.randomize_va_space = 2
+kernel.perf_event_paranoid = 3
+kernel.unprivileged_bpf_disabled = 1
+net.core.bpf_jit_harden = 2
+
+# --- Memory tuning (1 GB box + 4 GB NVMe swap) ---
+vm.swappiness = {{ hardening_swappiness }}
+vm.vfs_cache_pressure = {{ hardening_vfs_cache_pressure }}
+
+# --- Filesystem protections ---
+fs.protected_hardlinks = 1
+fs.protected_symlinks = 1
+fs.protected_fifos = 2
+fs.protected_regular = 2
+{% if hardening_disable_core_dumps | bool %}
+fs.suid_dumpable = 0
+{% endif %}

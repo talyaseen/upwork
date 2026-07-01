@@ -1,0 +1,69 @@
+---
+# Zone security for a PUBLIC demo (abuse defense, NOT a login gate):
+#   - Security Level High  (managed challenge to suspicious / low-reputation IPs;
+#     this is the primary bot defense)
+#   - Bot Fight Mode on
+#   - OPTIONAL Cloudflare managed WAF ruleset (Pro+ plans only; off by default)
+
+- name: Set zone Security Level to High
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/settings/security_level"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      value: "{{ cloudflare_security_level }}"
+    status_code: [200]
+  no_log: true
+
+- name: Enable Bot Fight Mode
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/bot_management"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      fight_mode: "{{ cloudflare_bot_fight_mode | bool }}"
+    status_code: [200]
+  no_log: true
+  when: cloudflare_bot_fight_mode | bool
+
+# OPTIONAL: deploy Cloudflare's managed WAF ruleset on the zone's managed phase.
+# Requires a plan that supports managed rules (Pro+). Off by default for free
+# zones - enabling it on an unsupported plan returns an API error.
+- name: Get the managed-firewall phase entrypoint (when managed WAF enabled)
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/rulesets/phases/http_request_firewall_managed/entrypoint"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    return_content: true
+    status_code: [200, 404]
+  register: _cf_managed_ep
+  no_log: true
+  when: cloudflare_managed_waf_enabled | bool
+
+- name: Deploy the Cloudflare managed WAF ruleset (execute reference)
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/rulesets/phases/http_request_firewall_managed/entrypoint"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      rules:
+        - action: "execute"
+          action_parameters:
+            id: "efb7b8c949ac4650a09736fc376e9aee"   # Cloudflare Managed Ruleset
+          expression: "true"
+          description: "Cloudflare Managed Ruleset (all traffic)"
+          enabled: true
+    status_code: [200]
+  no_log: true
+  when: cloudflare_managed_waf_enabled | bool

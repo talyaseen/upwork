@@ -1,0 +1,4 @@
+---
+# Tunable defaults for this role live centrally in group_vars/all/main.yml
+# (edge_ssh_port, cloudflare_ipv4_url, cloudflare_ipv6_url). This file is kept
+# for role self-containment; override any value in group_vars or vault as needed.

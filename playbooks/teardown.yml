@@ -1,0 +1,83 @@
+---
+# Tear down what this IaC created.  ansible-playbook playbooks/teardown.yml
+# Everything is removed additively-safe: we ONLY remove OUR own nginx vhosts, the
+# Origin cert/AOP material, the static web roots, and OUR ufw rules. The existing
+# 1:1 edge<->hub mTLS pair is NEVER deleted (it pre-exists this IaC). The
+# Cloudflare records / settings / rate-limit are left in place on purpose - remove
+# them from the Cloudflare dashboard/API if you really want them gone.
+
+- name: Tear down the edge reverse proxy (other services untouched)
+  hosts: edge
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Disable the portfolio + demo nginx sites
+      ansible.builtin.file:
+        path: "/etc/nginx/sites-enabled/{{ item }}.conf"
+        state: absent
+      loop:
+        - "{{ portfolio_site_name }}"
+        - "{{ demo_site_name }}"
+      notify: Reload nginx
+
+    - name: Remove the portfolio + demo nginx site files
+      ansible.builtin.file:
+        path: "/etc/nginx/sites-available/{{ item }}.conf"
+        state: absent
+      loop:
+        - "{{ portfolio_site_name }}"
+        - "{{ demo_site_name }}"
+      notify: Reload nginx
+
+    - name: Remove the Cloudflare Origin cert + key + AOP CA
+      ansible.builtin.file:
+        path: "{{ edge_tls_dir }}"
+        state: absent
+
+    - name: Remove the static web roots
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ portfolio_web_root }}"
+        - "{{ demo_web_root }}"
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+
+- name: Tear down the hub mTLS vhost + edge allow rule (mTLS pair preserved)
+  hosts: hub
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Disable the hub mTLS nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/hub-mtls.conf
+        state: absent
+      notify: Reload hub nginx
+
+    - name: Remove the hub mTLS nginx site file
+      ansible.builtin.file:
+        path: /etc/nginx/sites-available/hub-mtls.conf
+        state: absent
+      notify: Reload hub nginx
+
+    - name: Remove the edge -> hub mTLS-port allow rule
+      community.general.ufw:
+        rule: allow
+        from_ip: "{{ edge_public_ip }}"
+        to_port: "{{ hub_mtls_port | string }}"
+        proto: tcp
+        delete: true
+      when:
+        - edge_public_ip is defined
+        - "'FILL_ME' not in edge_public_ip"
+
+  handlers:
+    - name: Reload hub nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded

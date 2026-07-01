@@ -1,0 +1,107 @@
+---
+# ============================================================================
+# PREP / DO-NOT-APPLY until after `go`.
+#
+# Adds a ufw rule on the HUB admitting ONLY edge's public IP to the hub mTLS
+# port (where the hub_mtls_proxy nginx terminates the edge -> hub leg). This is
+# the network-layer enforcement that the hub is reachable from edge and NOTHING
+# else. It is ADDITIVE - it never flushes existing rules and never touches other
+# services on the hub.
+#
+# This role does NOT need (and must not contain) the hub's own IP: the rule is
+# "from <edge IP> to any port <backend port>", evaluated locally on the hub.
+#
+# Apply only AFTER: (1) edge is provisioned, (2) edge_public_ip is filled,
+# (3) the edge + cloudflare plays succeeded, (4) the operator says go.
+# Until then run it with --check (see playbooks/hub-allowlist.yml header).
+# ============================================================================
+
+- name: Assert edge IP is filled before touching the hub firewall
+  ansible.builtin.assert:
+    that:
+      - edge_public_ip is defined
+      - "'FILL_ME' not in edge_public_ip"
+    fail_msg: >-
+      Refusing to add a hub allow rule for a FILL_ME edge IP. Set
+      edge_public_ip in group_vars/all/vault.yml first.
+
+- name: Ensure ufw is installed on the hub
+  ansible.builtin.package:
+    name: ufw
+    state: present
+
+- name: Allow ONLY edge -> hub mTLS port (additive)
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ edge_public_ip }}"
+    to_port: "{{ hub_mtls_port | string }}"
+    proto: tcp
+    comment: "edge reverse-proxy -> hub mTLS nginx (Ansible-managed)"
+
+# NOTE: we deliberately do NOT set ufw default policies or enable/disable ufw
+# here - the hub already has its own firewall posture. We ONLY add this one
+# allow rule. If the hub mTLS port is currently open wider, tighten it manually
+# (deny from anywhere else) per the hub's own runbook; this role does not assume
+# ownership of the hub's full firewall.
+
+# ============================================================================
+# PREP / DO-NOT-APPLY: management-subnet ingress to the hub web/admin port.
+#
+# Lets prod/dev boxes on the mgmt subnet ({{ hub_mgmt_cidr }}) reach the hub's
+# web/admin port DIRECTLY for lock/unlock - NEVER via Cloudflare (the public proxy
+# 404s /api/admin/*). OFF by default; the operator turns it on at apply time:
+#   ansible-playbook playbooks/hub.yml -e hub_admin_ingress_enabled=true
+# ============================================================================
+- name: PREP - allow mgmt subnet -> hub web/admin port (inbound, additive)
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ hub_mgmt_cidr }}"
+    to_port: "{{ hub_admin_mgmt_port | string }}"
+    proto: tcp
+    comment: "mgmt subnet -> hub web/admin lock/unlock (Ansible-managed PREP)"
+  when: hub_admin_ingress_enabled | bool
+
+# FastAPI :{{ hub_app_port }} must NOT be publicly exposed. It is reached by the
+# mTLS nginx from 127.0.0.1 (loopback always allowed by ufw before.rules) and by
+# NAT boxes from {{ hub_mgmt_cidr }}. Allow the mgmt subnet, then DENY everyone
+# else to the app port (the allow is ordered first, so it wins for the mgmt subnet;
+# the deny catches all other sources). Net: app port = localhost + mgmt only.
+- name: PREP - allow mgmt subnet -> FastAPI app port (direct admin lock/unlock)
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ hub_mgmt_cidr }}"
+    to_port: "{{ hub_app_port | string }}"
+    proto: tcp
+    comment: "mgmt subnet -> hub FastAPI app port (Ansible-managed PREP)"
+  when: hub_admin_ingress_enabled | bool
+
+- name: PREP - deny all other sources -> FastAPI app port (not publicly exposed)
+  community.general.ufw:
+    rule: deny
+    to_port: "{{ hub_app_port | string }}"
+    proto: tcp
+    comment: "FastAPI app port not public; localhost + mgmt only (Ansible-managed PREP)"
+  when: hub_admin_ingress_enabled | bool
+
+# Responses to those inbound connections must escape any hub deny-out to the mgmt
+# subnet. ufw's before.rules ACCEPTs ESTABLISHED,RELATED in ufw-before-output ABOVE
+# all user rules, so stateful responses are permitted even with a deny-out to
+# {{ hub_mgmt_cidr }}. Verify that accept is intact; if the hub uses a CUSTOM raw
+# deny-out, layer the established/related allow above it (see RUNBOOK).
+- name: PREP - check ufw before-output accepts ESTABLISHED,RELATED (response path)
+  ansible.builtin.command: grep -q 'ESTABLISHED,RELATED' /etc/ufw/before.rules
+  register: _hub_estab_ok
+  changed_when: false
+  failed_when: false
+  when: hub_admin_ingress_enabled | bool
+
+- name: PREP - warn if the established/related response accept is missing
+  ansible.builtin.debug:
+    msg: >-
+      /etc/ufw/before.rules has NO ESTABLISHED,RELATED accept in ufw-before-output.
+      Responses from the hub admin port to {{ hub_mgmt_cidr }} may be blocked by the
+      deny-out. Layer an established/related allow ABOVE the deny-out before relying
+      on this ingress (see RUNBOOK "Hub mgmt ingress").
+  when:
+    - hub_admin_ingress_enabled | bool
+    - (_hub_estab_ok.rc | default(0)) != 0

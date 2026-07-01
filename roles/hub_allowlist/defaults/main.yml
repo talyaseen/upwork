@@ -1,0 +1,3 @@
+---
+# hub_mtls_port lives centrally in group_vars/all/main.yml (default 8443).
+# edge_public_ip comes from vault. This file is kept for role self-containment.

@@ -1,0 +1,69 @@
+---
+# Drives the Cloudflare edge entirely via the REST API (no server contact) for a
+# PUBLIC, proxied demo + portfolio. Concerns, in order:
+#   1. dns.yml              - proxied (orange-cloud) A records (apex + www + chat) -> edge
+#   2. ssl.yml              - Full-strict SSL + min TLS (+ zone AOP only in "zone" mode)
+#   3. aop_per_hostname.yml - PER-HOSTNAME AOP with a custom cert (free-zone friendly; default)
+#   4. security.yml         - Security Level High + Bot Fight Mode (+ optional managed WAF)
+#   5. ratelimit.yml        - rate-limit chat /api/* (protect the GPU LLM; not a gate)
+# The API token + account id come from vault and are NEVER logged.
+
+- name: Assert core Cloudflare variables are set
+  ansible.builtin.assert:
+    that:
+      - cloudflare_api_token is defined and cloudflare_api_token | length > 10
+      - "'FILL_ME' not in cloudflare_api_token"
+      - cloudflare_account_id is defined and 'FILL_ME' not in cloudflare_account_id
+      - domain is defined
+      - demo_fqdn is defined
+      - edge_public_ip is defined and 'FILL_ME' not in edge_public_ip
+    fail_msg: >-
+      Fill group_vars/all/vault.yml first (cloudflare_api_token,
+      cloudflare_account_id, domain, edge_public_ip). The token is normally
+      passed on the CLI from /home/deploy/.cloudflare.env - see RUNBOOK.md.
+
+- name: Look up the Cloudflare zone id (when not pinned in vault)
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones?name={{ domain }}&status=active"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    return_content: true
+  register: _cf_zone
+  no_log: true
+  when: cloudflare_zone_id is not defined
+
+- name: Resolve the zone id
+  ansible.builtin.set_fact:
+    _cf_zone_id: "{{ cloudflare_zone_id | default(_cf_zone.json.result[0].id) }}"
+
+- name: Fail if the zone could not be resolved
+  ansible.builtin.assert:
+    that:
+      - _cf_zone_id is defined and _cf_zone_id | length > 0
+    fail_msg: >-
+      Could not resolve a Cloudflare zone for '{{ domain }}'. Check the domain is
+      on this Cloudflare account and the token has Zone:Read access.
+
+- name: Configure the proxied DNS records (apex + www + chat)
+  ansible.builtin.include_tasks: dns.yml
+  loop: "{{ cloudflare_records }}"
+  loop_control:
+    loop_var: _record_name
+
+- name: Configure Full-strict SSL + Authenticated Origin Pulls
+  ansible.builtin.include_tasks: ssl.yml
+
+- name: Configure PER-HOSTNAME Authenticated Origin Pulls (custom cert; free-zone friendly)
+  ansible.builtin.include_tasks: aop_per_hostname.yml
+  when:
+    - aop_enabled | default(true) | bool
+    - (aop_mode | default('per_hostname')) == 'per_hostname'
+
+- name: Configure zone security (Security Level High + Bot Fight Mode + WAF)
+  ansible.builtin.include_tasks: security.yml
+
+- name: Configure the /api rate-limit rule
+  ansible.builtin.include_tasks: ratelimit.yml
+  when: cloudflare_ratelimit_enabled | bool

@@ -1,0 +1,152 @@
+---
+# ============================================================================
+# hardening role defaults. Every value is overridable in group_vars/vault.
+# This role is idempotent and SAFE-BY-ORDERING: it never disables password auth
+# until an authorized key is proven present for the admin user (see tasks/ssh.yml).
+#
+# It does NOT own the firewall: ufw (22 + 443-from-Cloudflare) is owned by the
+# edge_base role, which the harden play runs first. This role only ADDS host
+# hardening (sshd, fail2ban, unattended-upgrades, sysctl, baseline) on top.
+# ============================================================================
+
+# ---- Identity of the box / admin user (resolve from the edge_host_* set
+#      defined in group_vars/all/vars.yml; safe fallbacks here for standalone use).
+hardening_admin_user: "{{ edge_host_admin_user | default('deploy') }}"
+hardening_hostname: "{{ edge_host_hostname | default('edge-01') }}"
+hardening_ssh_port: "{{ edge_host_ssh_port | default(22) }}"
+
+# ---------------------------------------------------------------------------
+# SSH hardening (drop-in /etc/ssh/sshd_config.d/60-hardening.conf)
+# ---------------------------------------------------------------------------
+# MASTER SAFETY SWITCH. When true, password + keyboard-interactive auth are
+# disabled and only publickey is accepted. The role REFUSES to set this unless an
+# authorized_keys entry already exists for hardening_admin_user (anti-lockout).
+hardening_ssh_disable_password: true
+hardening_ssh_permit_root_login: "no"
+hardening_ssh_max_auth_tries: 3
+hardening_ssh_login_grace_time: 30
+hardening_ssh_max_sessions: 4
+# Idle timeout: interval * count_max seconds (300 * 2 = 10 min) then disconnect.
+hardening_ssh_client_alive_interval: 300
+hardening_ssh_client_alive_count_max: 2
+hardening_ssh_x11_forwarding: "no"
+hardening_ssh_allow_tcp_forwarding: "no"
+hardening_ssh_allow_agent_forwarding: "no"
+# Users permitted to log in over SSH (AllowUsers). Admin only by default.
+hardening_ssh_allow_users:
+  - "{{ hardening_admin_user }}"
+# Strong, modern crypto only (OpenSSH 9.x on Ubuntu 24.04).
+hardening_ssh_kex:
+  - sntrup761x25519-sha512@openssh.com
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org
+  - diffie-hellman-group16-sha512
+  - diffie-hellman-group18-sha512
+  - diffie-hellman-group-exchange-sha256
+hardening_ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+  - aes256-ctr
+  - aes192-ctr
+  - aes128-ctr
+hardening_ssh_macs:
+  - hmac-sha2-512-etm@openssh.com
+  - hmac-sha2-256-etm@openssh.com
+  - umac-128-etm@openssh.com
+
+# ---------------------------------------------------------------------------
+# fail2ban
+# ---------------------------------------------------------------------------
+hardening_fail2ban_enabled: true
+# LENIENT BY DESIGN: SSH is key-only (password auth disabled), so brute-force is
+# toothless - fail2ban exists only to stop egregious PERSISTENT abuse, never legit
+# bursts or our own key-based automation. High maxretry, modest non-escalating
+# bantime, no burst banning.
+hardening_fail2ban_bantime: "1h"
+hardening_fail2ban_findtime: "15m"
+hardening_fail2ban_maxretry: 10
+# No escalating bans (a key-only box does not need recidive ratcheting).
+hardening_fail2ban_bantime_increment: false
+hardening_fail2ban_bantime_maxtime: "1w"
+# sshd jail mode: "normal" (lenient), not "aggressive" - do not ban on bursts.
+hardening_fail2ban_sshd_mode: "normal"
+# Networks fail2ban must NEVER ban: loopback + the hub IP (vaulted) + operator
+# management IPs, so our automation / the operator never gets locked out. Hub IP is
+# a HARD secret - vault only; mgmt IPs are operator-supplied (vault or vars).
+hardening_fail2ban_ignoreips:
+  - "127.0.0.1/8"
+  - "::1"
+hardening_fail2ban_extra_ignoreips: "{{ vault_hardening_fail2ban_ignoreips | default([]) }}"
+# Operator management IPs/CIDRs to never ban (e.g. the hub mgmt subnet 10.0.0.0/24).
+hardening_fail2ban_mgmt_ips: "{{ vault_hardening_fail2ban_mgmt_ips | default([]) }}"
+# nginx/HTTP jails OFF by default: Cloudflare fronts HTTP and absorbs bursts; we do
+# not want legit bursty demo traffic triggering bans. Flip on only if ever needed.
+hardening_fail2ban_nginx_jails: false
+
+# ---------------------------------------------------------------------------
+# unattended-upgrades (automatic SECURITY updates only)
+# ---------------------------------------------------------------------------
+hardening_unattended_enabled: true
+# Auto-reboot is OFF by default (this is a standing public proxy). If you enable
+# it, reboots happen only inside the window below and only when an update needs it.
+hardening_unattended_auto_reboot: false
+hardening_unattended_auto_reboot_time: "04:30"
+hardening_unattended_autoclean_interval: 7
+
+# ---------------------------------------------------------------------------
+# sysctl kernel / network hardening
+# ---------------------------------------------------------------------------
+hardening_sysctl_enabled: true
+hardening_disable_core_dumps: true
+# Leave IPv6 Router Advertisements alone by default (some VPS rely on RA/SLAAC for
+# IPv6). Flip to true ONLY on boxes with static IPv6 / no RA dependency.
+hardening_sysctl_ipv6_disable_accept_ra: false
+# Memory tuning for the small (1 vCPU / 1 GB) box backed by a 4 GB NVMe swap file.
+# NVMe is fast, so a moderate swappiness is fine and gives OOM headroom for apt /
+# fail2ban / log spikes without hurting proxy latency.
+hardening_swappiness: 20
+hardening_vfs_cache_pressure: 50
+
+# ---------------------------------------------------------------------------
+# Swap file (OOM insurance on the 1 GB box; 4 GB on the 20 GB NVMe)
+# ---------------------------------------------------------------------------
+hardening_swap_enabled: true
+hardening_swap_file: /swapfile
+hardening_swap_size: "4G"
+
+# ---------------------------------------------------------------------------
+# Egress filtering (ufw default-deny OUTGOING + tight allowlist).
+# Maltrail is intentionally NOT used (too heavy for 1 GB; detection not
+# prevention; CF already fronts the box). This is applied LAST, after every
+# package install, so apt/unattended-upgrades never break mid-run.
+# ---------------------------------------------------------------------------
+hardening_egress_filtering: true
+hardening_egress_allow_dns: true        # 53/udp+tcp (resolver)
+hardening_egress_allow_ntp: true        # 123/udp (time sync)
+hardening_egress_allow_http: true       # 80,443/tcp (apt + unattended-upgrades + CF IP-range fetch)
+hardening_egress_allow_hub: true        # outbound to the hub mTLS upstream (vaulted IP:port)
+# Extra outbound rules if ever needed, e.g.:
+#   - { port: 25, proto: tcp, to_ip: "203.0.113.5" }
+hardening_egress_extra_rules: []
+
+# ---------------------------------------------------------------------------
+# Baseline
+# ---------------------------------------------------------------------------
+hardening_set_hostname: true
+hardening_manage_motd_banner: true
+hardening_timesync_enabled: true
+# Passwordless sudo for the automation admin (key-only access, no passphrase key).
+# Standard for an unattended hub->box automation account. Disable to keep sudo
+# password-gated (then supply ansible_become_password from the vault at run time).
+hardening_passwordless_sudo: "{{ edge_host_passwordless_sudo | default(true) }}"
+# Secure shared memory (/run/shm noexec,nosuid,nodev). Opt-in: can interfere with
+# some workloads; this box is a plain nginx proxy so it is safe to enable.
+hardening_secure_shared_memory: true
+# Lightweight auditd (off by default - adds noise/IO on a small proxy box).
+hardening_auditd_enabled: false
+# Remove/disable unused listening services commonly preinstalled on cloud images.
+hardening_remove_unused_services: true
+hardening_unused_services:
+  - rpcbind
+  - avahi-daemon

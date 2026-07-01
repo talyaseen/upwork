@@ -1,0 +1,227 @@
+---
+# Non-secret config (committed, plaintext). Secret VALUES never appear here -
+# only references to vault_* variables. Those resolve from:
+#   - group_vars/all/vault.yml        (ENCRYPTED, committed): rotatable secrets
+#   - group_vars/all/vault.local.yml  (GITIGNORED): the two never-commit values
+#                                       (hub IP + the edge<->hub mTLS private key)
+# See vault.example.yml / vault.local.example.yml for the structure, and README.md
+# "Secrets" for the create/edit/encrypt/run workflow.
+#
+# Architecture realized by this IaC (PUBLIC proxied demo + portfolio):
+#   client -> Cloudflare (PROXIED/orange, edge TLS, Security Level High + Bot
+#             Fight Mode + /api rate-limit; Full-strict + Authenticated Origin
+#             Pulls to the origin)
+#          -> edge nginx :443 (CF Origin cert; ufw admits ONLY Cloudflare
+#             ranges on 443). TWO vhosts:
+#               apex example.com (+ www) = PURE STATIC portfolio (no /api)
+#               chat.example.com         = static Flutter + /api -> hub
+#          -> [chat /api only] hub nginx over a 1:1 MUTUAL-TLS leg
+#          -> hub FastAPI 127.0.0.1:8000 (hub ufw admits ONLY edge's IP)
+
+# ============================================================================
+# Secret references -> vault_* vars (the only place a friendly name maps to a
+# secret). Values live in the encrypted vault.yml / gitignored vault.local.yml.
+# ============================================================================
+# Rotatable secrets (encrypted vault.yml). The CF token can also be overridden on
+# the CLI from /home/deploy/.cloudflare.env (see RUNBOOK).
+cloudflare_api_token: "{{ vault_cloudflare_api_token }}"
+cloudflare_origin_cert: "{{ vault_cloudflare_origin_cert }}"
+cloudflare_origin_key: "{{ vault_cloudflare_origin_key }}"
+edge_ssh_key_path: "{{ vault_edge_ssh_key_path }}"
+# Account id is non-secret-ish but kept in the vault with the rest of the CF set.
+cloudflare_account_id: "{{ vault_cloudflare_account_id }}"
+
+# NEVER-COMMIT values (gitignored vault.local.yml). edge's public IP is not a
+# secret but is runtime-specific and filled at provision time alongside them.
+hub_backend_ip: "{{ vault_hub_backend_ip }}"
+edge_public_ip: "{{ vault_edge_public_ip }}"
+# The edge<->hub mTLS PRIVATE KEY (if you want Ansible to install it) is set in
+# vault.local.yml as edge_client_key_content / hub_mtls_server_key_content -
+# NEVER here, never committed. By default the existing on-host pair is referenced
+# by path (see the mTLS section below) and nothing is installed.
+
+# ---- Public hostnames / DNS ----
+# Portfolio lives at the apex (example.com + www). The AI demo lives at the
+# chat subdomain.
+demo_subdomain: "chat"
+demo_fqdn: "{{ demo_subdomain }}.{{ domain }}"
+www_fqdn: "www.{{ domain }}"
+# The API path on the chat vhost, reverse-proxied to the hub over mTLS. Static
+# builds are served at each vhost root.
+api_location: "/api/"
+# Refuse /api/admin/* at the PUBLIC proxy. The admin lock/unlock endpoint is
+# internal-only (reached directly from the mgmt subnet, never via Cloudflare).
+demo_block_admin_api: true
+
+# Zone domain (non-secret).
+domain: "example.com"
+
+# Records to create as PROXIED (orange-cloud) A records -> edge. All public.
+cloudflare_records:
+  - "{{ domain }}"        # apex portfolio
+  - "{{ www_fqdn }}"      # www -> portfolio
+  - "{{ demo_fqdn }}"     # chat -> AI demo
+
+# ---- edge SSH (non-secret bits; key PATH comes from vault above) ----
+# Legacy/initial-image assumption (root). The box is actually administered as the
+# hardened admin user below; these are kept for backward compatibility only.
+edge_ssh_user: "root"
+edge_ssh_port: 22
+
+# ============================================================================
+# edge-01 - hardening identity + connection
+# ----------------------------------------------------------------------------
+# This IS the edge box (same physical VPS); these vars describe how the harden
+# pipeline connects + identifies it. The hub->box automation keypair lives ONLY
+# on the hub (private key never committed). The initial password + box IP are
+# relayed by the operator at apply time into the gitignored vault.local.yml.
+# ============================================================================
+edge_host_hostname: "edge-01"
+edge_host_admin_user: "deploy"
+edge_host_ssh_port: "{{ edge_ssh_port | default(22) }}"
+# Same physical box as edge - single source of truth for the IP (vault.local).
+edge_host_ip: "{{ edge_public_ip }}"
+# Hub-side automation key (ed25519, no passphrase). Private key stays on the hub.
+edge_host_ssh_key_path: "~/.ssh/id_ed25519_edge_host"
+edge_host_pubkey_path: "{{ edge_host_ssh_key_path }}.pub"
+# Initial provider password for first-contact bootstrap (vault.local, never committed).
+edge_host_initial_password: "{{ vault_edge_host_initial_password }}"
+# Passwordless sudo for the key-only automation user (standard for unattended runs).
+edge_host_passwordless_sudo: true
+
+# ---- Cloudflare REST API ----
+cloudflare_api_base: "https://api.cloudflare.com/client/v4"
+
+# ---- Cloudflare DNS (proxied / orange-cloud) ----
+cloudflare_record_type: "A"
+cloudflare_record_proxied: true        # orange cloud: hide origin + edge TLS + WAF
+cloudflare_record_ttl: 1               # forced to 1 (auto) for proxied records
+
+# ---- Cloudflare SSL / TLS hardening (zone-level) ----
+cloudflare_ssl_mode: "strict"          # "Full (strict)": validate edge Origin cert
+cloudflare_min_tls_version: "1.2"
+cloudflare_always_use_https: "on"
+cloudflare_tls_1_3: "on"
+# Zone-global AOP (Cloudflare's SHARED cert). Does NOT reliably present a client
+# cert on FREE zones, so it is SUPERSEDED by per-hostname AOP with a custom cert
+# (see aop_mode below). Only pushed to Cloudflare when aop_mode == "zone";
+# otherwise the live zone setting is left untouched.
+cloudflare_aop_zone_enabled: "{{ (aop_mode | default('per_hostname')) == 'zone' }}"
+
+# ---- Cloudflare security (PUBLIC demo - abuse defense, NOT a login gate) ----
+# Security Level High = managed challenge to suspicious/low-reputation traffic
+# (primary bot defense). Bot Fight Mode on as well.
+cloudflare_security_level: "high"
+cloudflare_bot_fight_mode: true
+# Cloudflare managed WAF ruleset. Requires a Pro+ plan; OFF by default (free zone).
+cloudflare_managed_waf_enabled: false
+
+# LAST-RESORT anti-flood backstop on the chat demo's /api/* - effectively a no-op
+# for any real usage. DDoS protection is already handled by edge + Cloudflare (CF
+# Security Level High + Bot Fight Mode + the backend queue); we deliberately do NOT
+# impose a low limit. This rule only catches an absurd single-IP flood. Default
+# 2000 req/min/IP (tunable); raise further or disable entirely if it ever bites.
+cloudflare_ratelimit_enabled: true
+cloudflare_ratelimit_requests: 2000    # last-resort only; edge + CF do DDoS defense
+cloudflare_ratelimit_period: 60        # seconds
+cloudflare_ratelimit_mitigation_timeout: 60
+cloudflare_ratelimit_action: "block"   # or "managed_challenge"
+
+# ---- edge nginx (TWO vhosts) ----
+portfolio_site_name: "portfolio-site"
+demo_site_name: "demo-site"
+portfolio_web_root: "/var/www/{{ portfolio_site_name }}"
+demo_web_root: "/var/www/{{ demo_site_name }}"
+# Local (control-machine) build output for the apex portfolio (non-secret path).
+# The demo build path flutter_dist is filled in vault.local.yml (runtime-specific).
+portfolio_dist: "/home/deploy/portfolio-site/build/web"
+
+# Cloudflare Origin certificate + key (Cloudflare -> edge hop, "Full strict").
+# Cover BOTH the apex and the wildcard (example.com + *.example.com).
+# The cert/key CONTENT comes from the encrypted vault; these are where it lands.
+edge_tls_dir: "/etc/nginx/cloudflare"
+origin_cert_path: "{{ edge_tls_dir }}/origin.pem"
+origin_key_path: "{{ edge_tls_dir }}/origin.key"
+
+# Authenticated Origin Pulls (AOP): only Cloudflare can complete the TLS handshake
+# to edge:443. We use PER-HOSTNAME AOP with a CUSTOM client certificate because
+# the zone-global toggle does NOT reliably present a client cert on FREE zones.
+# Cloudflare presents our LEAF cert on the configured hostnames; the origin nginx
+# requires + verifies it against the CUSTOM CA (aop_custom_ca_path) that signed it.
+aop_enabled: true
+aop_mode: "per_hostname"               # "per_hostname" (custom cert) | "zone" | "off"
+
+# Origin trust anchor per mode:
+#   per_hostname -> our custom CA (aop_custom_ca_path), installed from
+#                   aop_custom_ca_content (gitignored vault.local.yml) or referenced
+#                   by path if the PEM is already on the box.
+#   zone         -> Cloudflare's global AOP CA (aop_ca_path), fetched from aop_ca_url.
+aop_ca_path: "{{ edge_tls_dir }}/cloudflare-origin-pull-ca.pem"
+aop_ca_url: "https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem"
+aop_custom_ca_path: "{{ edge_tls_dir }}/aop-custom-ca.pem"
+aop_trust_path: "{{ aop_custom_ca_path if (aop_mode | default('per_hostname')) == 'per_hostname' else aop_ca_path }}"
+
+# Hostnames Cloudflare presents the custom cert on (per-hostname AOP). chat is
+# included so AOP is already enforced the moment its DNS is cut over. ui.* is a
+# CNAME to a DIFFERENT origin and is deliberately excluded.
+cloudflare_aop_per_hostname_hosts:
+  - "{{ domain }}"
+  - "{{ www_fqdn }}"
+  - "{{ demo_fqdn }}"
+# The custom LEAF cert + key uploaded to Cloudflare, and the CA the origin trusts,
+# are NEVER committed - supply in the gitignored vault.local.yml:
+#   aop_custom_ca_content, cloudflare_aop_client_cert_content,
+#   cloudflare_aop_client_key_content   (see vault.local.example.yml).
+
+# ---- edge <-> hub MUTUAL-TLS leg (the existing 1:1 edge<->hub cert pair) ----
+# One CA signs both ends. By DEFAULT these reference cert material ALREADY PRESENT
+# on each host (the operator says the 1:1 pair already exists). Only if the
+# matching *_content var is supplied in vault.local.yml does the role install the
+# PEM; with no content var the files at these paths are reused as-is. The PRIVATE
+# KEY is NEVER committed (vault.local.yml only).
+mtls_dir: "/etc/edge-mtls"
+# edge side = TLS CLIENT to the hub: presents this cert/key upstream.
+edge_client_cert_path: "{{ mtls_dir }}/edge-client.pem"
+edge_client_key_path: "{{ mtls_dir }}/edge-client.key"
+# Shared CA that signed the 1:1 pair (used by edge to verify the hub server
+# cert, and by the hub to verify edge's client cert).
+mtls_ca_path: "{{ mtls_dir }}/edge-ca.pem"
+# Hub side = TLS SERVER for the leg (used by the PREP/DO-NOT-APPLY hub nginx role).
+hub_mtls_server_cert_path: "{{ mtls_dir }}/hub-server.pem"
+hub_mtls_server_key_path: "{{ mtls_dir }}/hub-server.key"
+# The CN/SAN on the HUB server cert. edge sets proxy_ssl_name to THIS (never the
+# hub IP), so the upstream cert is verified without leaking the hub address.
+hub_mtls_server_name: "hub.mtls.internal"
+edge_upstream_verify: true
+edge_upstream_verify_depth: 2
+
+# ---- Hub endpoint ports (the SECRET address edge dials = hub_backend_ip, set
+# in vault.local.yml). edge connects to the hub nginx mTLS listener
+# (hub_mtls_port), which fronts the FastAPI app on hub_app_port (loopback). ----
+hub_mtls_port: 8443
+hub_app_port: 8000
+
+# ---- Hub management ingress (PREP / DO-NOT-APPLY - operator applies on the hub) ----
+# The internal management subnet that may reach the hub's web/admin port DIRECTLY
+# (lock/unlock from prod/dev boxes) - NEVER via Cloudflare. Used only by the gated,
+# DO-NOT-APPLY hub_allowlist tasks (hub_admin_ingress_enabled, default false).
+hub_mgmt_cidr: "10.0.0.0/24"
+# The hub's web/admin port that the mgmt subnet hits. Override to the real port.
+hub_admin_mgmt_port: "{{ hub_app_port }}"
+# OFF by default: the operator turns this on (-e hub_admin_ingress_enabled=true)
+# when applying the hub-side firewall change.
+hub_admin_ingress_enabled: false
+# Defense-in-depth: ALSO refuse /api/admin/* at the hub mTLS nginx (in front of
+# FastAPI), so public traffic arriving as 127.0.0.1 cannot pass the app's localhost
+# allow. /api/admin stays reachable only from localhost + the mgmt subnet directly.
+hub_block_admin_api: true
+
+# ---- edge firewall (ufw) ----
+# Default deny incoming, allow outgoing. Inbound: 22 (SSH, open) + 443 ONLY from
+# Cloudflare's published ranges (orange-cloud => all legit traffic via Cloudflare).
+cloudflare_ipv4_url: "https://www.cloudflare.com/ips-v4"
+cloudflare_ipv6_url: "https://www.cloudflare.com/ips-v6"
+
+# nginx tuning
+proxy_connect_timeout: "10s"
+proxy_read_timeout: "60s"

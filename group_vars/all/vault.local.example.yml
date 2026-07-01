@@ -1,0 +1,105 @@
+---
+# ============================================================================
+# DOCUMENTS the structure of group_vars/all/vault.local.yml - the GITIGNORED
+# file holding the HARD-EXCEPTION values that must NEVER be committed, not even
+# inside the encrypted vault (this repo may be made public):
+#
+#   - hub_backend_ip                  : the hub's IP (never in DNS / git / logs)
+#   - the edge<->hub mTLS PRIVATE KEY: only if you want Ansible to install it
+#
+# Create it (and optionally encrypt it too):
+#   cp vault.local.example.yml vault.local.yml ; $EDITOR vault.local.yml
+#   ansible-vault encrypt group_vars/all/vault.local.yml      # optional
+# Or supply these at runtime instead of a file:
+#   ansible-playbook ... --extra-vars @/secure/path/vault.local.yml
+#
+# vault.local.yml is gitignored. Keep it that way. Never paste the real hub IP or
+# mTLS private key into any other (committed) file.
+# ============================================================================
+
+# HUB IP - HARD SECRET. edge dials this for the chat /api leg over mTLS. It must
+# never reach a client, a third party, a public DNS record, or a log.
+vault_hub_backend_ip: "FILL_ME-hub-ip-never-commit"
+
+# edge / edge-01 public IP - not secret, but runtime-specific (unknown
+# until the box is provisioned). This is the SAME box as edge-01; it is
+# the single source of truth for the box IP (edge_host_ip derives from it).
+# The operator relays it at apply time.
+vault_edge_public_ip: "FILL_ME-edge-01-public-ip"
+
+# ---- edge-01 hardening secrets (relayed by the operator at apply time) ----
+# Initial provider PASSWORD for deploy - used ONCE by
+# playbooks/bootstrap.yml for first-contact (install + verify the key), then SSH
+# password auth is disabled by playbooks/harden.yml. NEVER commit this.
+vault_edge_host_initial_password: "FILL_ME-initial-ssh-password-never-commit"
+
+# OPTIONAL: extra IPs/CIDRs fail2ban must never ban (e.g. the hub's egress IP, a
+# HARD secret). Loopback + the hub IP (vault_hub_backend_ip) are always ignored.
+# Leave empty to ignore none.
+# vault_hardening_fail2ban_ignoreips:
+#   - "FILL_ME-some-trusted-ip/32"
+
+# OPTIONAL: operator MANAGEMENT IPs/CIDRs fail2ban must never ban (e.g. the mgmt
+# subnet 10.0.0.0/24, or an admin workstation). Keeps our automation / the operator
+# from ever being locked out. fail2ban is already lenient (key-only box); this is
+# belt-and-suspenders.
+# vault_hardening_fail2ban_mgmt_ips:
+#   - "10.0.0.0/24"
+
+# Local (control-machine) path to the Flutter DEMO build/web output synced to the
+# chat vhost root.
+flutter_dist: "FILL_ME-/path/to/flutter-demo/build/web"
+
+# ---- Per-hostname Authenticated Origin Pulls (CUSTOM cert) - NEVER COMMIT ----
+# The zone-global AOP toggle does NOT reliably present a client cert on FREE zones,
+# so we use PER-HOSTNAME AOP with a custom cert. Cloudflare presents the LEAF cert
+# on the configured hostnames (cloudflare_aop_per_hostname_hosts); the origin nginx
+# requires it and verifies against the CA below. Generate a CA + a client leaf
+# signed by it (RSA 2048, EKU clientAuth, long validity), e.g.:
+#
+#   openssl req -x509 -newkey rsa:2048 -nodes -days 7300 -keyout aop-ca.key \
+#       -out aop-ca.pem -subj "/CN=<zone> Origin-Pull CA/O=<org>"
+#   openssl req -new -newkey rsa:2048 -nodes -keyout aop-client.key \
+#       -out aop-client.csr -subj "/CN=<zone>-origin-pull-client/O=<org>"
+#   openssl x509 -req -in aop-client.csr -CA aop-ca.pem -CAkey aop-ca.key \
+#       -CAcreateserial -days 7300 -out aop-client.pem \
+#       -extfile <(printf 'basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n')
+#
+# cloudflare_edge uploads the LEAF (+key) to Cloudflare; edge_proxy installs the
+# CA on the origin. These are OPTIONAL on re-run once the cert is on Cloudflare and
+# the CA PEM is on the box (both are then referenced, not re-created).
+#
+# The CA the ORIGIN trusts (public cert):
+# aop_custom_ca_content: |
+#   -----BEGIN CERTIFICATE-----
+#   ...
+# The LEAF cert uploaded to Cloudflare (public):
+# cloudflare_aop_client_cert_content: |
+#   -----BEGIN CERTIFICATE-----
+#   ...
+# The LEAF PRIVATE KEY uploaded to Cloudflare (SECRET - never commit):
+# cloudflare_aop_client_key_content: |
+#   -----BEGIN PRIVATE KEY-----
+#   ...
+
+# ---- OPTIONAL: install the existing 1:1 edge<->hub mTLS material via Ansible ----
+# By DEFAULT the roles REFERENCE the pair already on the hosts at mtls_dir and do
+# NOT install anything (leave these unset). Set them ONLY if you want Ansible to
+# write the PEM. The PRIVATE KEYS below are exactly why this file is gitignored.
+#
+# edge client cert + key (edge presents upstream):
+# edge_client_cert_content: |
+#   -----BEGIN CERTIFICATE-----
+#   ...
+# edge_client_key_content: |
+#   (mTLS PRIVATE KEY - NEVER COMMIT)
+# Shared mTLS CA (verifies both ends):
+# mtls_ca_content: |
+#   -----BEGIN CERTIFICATE-----
+#   ...
+# Hub server cert + key (PREP/DO-NOT-APPLY hub nginx role):
+# hub_mtls_server_cert_content: |
+#   -----BEGIN CERTIFICATE-----
+#   ...
+# hub_mtls_server_key_content: |
+#   (mTLS PRIVATE KEY - NEVER COMMIT)

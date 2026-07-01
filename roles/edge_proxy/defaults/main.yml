@@ -1,0 +1,5 @@
+---
+# Tunable defaults for this role live centrally in group_vars/all/main.yml
+# (nginx_site_name, edge_web_root, origin/aop paths, proxy timeouts, the
+# hub_backend_* endpoint). This file is kept for role self-containment; override
+# any value in group_vars or vault as needed.

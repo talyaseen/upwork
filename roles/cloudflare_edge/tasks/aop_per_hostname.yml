@@ -1,0 +1,83 @@
+---
+# PER-HOSTNAME Authenticated Origin Pulls with a CUSTOM client certificate.
+# Works on FREE zones (the zone-global AOP toggle does not reliably present a
+# client cert on free plans). Cloudflare presents OUR leaf cert on the configured
+# hostnames; the origin (edge nginx) requires + verifies it against the CUSTOM
+# CA that signed it (installed on the origin by the edge_proxy role).
+#
+# Cert/key CONTENT is NEVER committed - supply in the gitignored vault.local.yml:
+#   cloudflare_aop_client_cert_content  (the leaf cert PEM, public)
+#   cloudflare_aop_client_key_content   (the leaf PRIVATE KEY - secret)
+# Idempotent: reuses an already-uploaded cert when present; the enable step is a
+# declarative PUT.
+
+- name: List existing per-hostname AOP client certificates
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/origin_tls_client_auth/hostnames/certificates"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    return_content: true
+  register: _cf_aop_certs
+  no_log: true
+
+- name: Reuse an already-uploaded AOP certificate id (active or deploying)
+  ansible.builtin.set_fact:
+    _aop_cert_id: >-
+      {{ ((_cf_aop_certs.json.result | selectattr('status', 'equalto', 'active')
+             | map(attribute='id') | list)
+        + (_cf_aop_certs.json.result | selectattr('status', 'equalto', 'pending_deployment')
+             | map(attribute='id') | list)
+        + ['']) | first }}
+
+- name: Upload the custom AOP client certificate (only if none present + content supplied)
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/origin_tls_client_auth/hostnames/certificates"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      certificate: "{{ cloudflare_aop_client_cert_content }}"
+      private_key: "{{ cloudflare_aop_client_key_content }}"
+    status_code: [200, 201]
+  register: _cf_aop_upload
+  no_log: true
+  when:
+    - _aop_cert_id | length == 0
+    - cloudflare_aop_client_cert_content is defined and 'FILL_ME' not in cloudflare_aop_client_cert_content
+    - cloudflare_aop_client_key_content is defined and 'FILL_ME' not in cloudflare_aop_client_key_content
+
+- name: Resolve the AOP certificate id to use
+  ansible.builtin.set_fact:
+    _aop_cert_id: "{{ _aop_cert_id if _aop_cert_id | length > 0 else (_cf_aop_upload.json.result.id | default('')) }}"
+
+- name: Fail if no per-hostname AOP certificate could be resolved
+  ansible.builtin.assert:
+    that:
+      - _aop_cert_id | length > 0
+    fail_msg: >-
+      No per-hostname AOP certificate is present on Cloudflare and none was
+      uploaded. Supply cloudflare_aop_client_cert_content +
+      cloudflare_aop_client_key_content (the leaf cert + key) in the gitignored
+      vault.local.yml, then re-run playbooks/cloudflare.yml.
+
+- name: Build the per-hostname AOP config (one entry per hostname)
+  ansible.builtin.set_fact:
+    _aop_config: "{{ _aop_config | default([]) + [{'hostname': item, 'cert_id': _aop_cert_id, 'enabled': true}] }}"
+  loop: "{{ cloudflare_aop_per_hostname_hosts }}"
+
+- name: Enable per-hostname AOP for each hostname (declarative, idempotent)
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/origin_tls_client_auth/hostnames"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      config: "{{ _aop_config }}"
+    status_code: [200]
+  no_log: true

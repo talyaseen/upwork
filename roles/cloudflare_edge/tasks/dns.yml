@@ -1,0 +1,52 @@
+---
+# Idempotently create/update one PROXIED (orange-cloud) A record
+# _record_name -> edge_public_ip. Proxied = Cloudflare hides edge's origin IP
+# and terminates public TLS at its edge. Included once per name in
+# cloudflare_records (apex, www, chat). The HUB IP is never used here - only
+# edge's public IP is published.
+
+- name: Look up any existing record for {{ _record_name }}
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/dns_records?type={{ cloudflare_record_type }}&name={{ _record_name }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    return_content: true
+  register: _cf_record
+  no_log: true
+
+- name: Build the desired record body for {{ _record_name }}
+  ansible.builtin.set_fact:
+    _cf_body:
+      type: "{{ cloudflare_record_type }}"
+      name: "{{ _record_name }}"
+      content: "{{ edge_public_ip }}"
+      ttl: "{{ cloudflare_record_ttl }}"
+      proxied: "{{ cloudflare_record_proxied }}"
+
+- name: Create the proxied DNS record when absent for {{ _record_name }}
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/dns_records"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: "{{ _cf_body }}"
+    status_code: [200, 201]
+  no_log: true
+  when: _cf_record.json.result | length == 0
+
+- name: Update the proxied DNS record when present for {{ _record_name }}
+  ansible.builtin.uri:
+    url: "{{ cloudflare_api_base }}/zones/{{ _cf_zone_id }}/dns_records/{{ _cf_record.json.result[0].id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: "{{ _cf_body }}"
+    status_code: [200]
+  no_log: true
+  when: _cf_record.json.result | length > 0

@@ -1,0 +1,43 @@
+; {{ ansible_managed }}
+; fail2ban configuration for edge-01. Managed by the hardening role.
+
+[DEFAULT]
+; Use the systemd journal as the log backend (Ubuntu 24.04 default).
+backend = systemd
+; Networks fail2ban must NEVER ban: loopback + operator mgmt IPs + the hub IP
+; (vaulted), so our own key-based automation / the operator are never locked out.
+ignoreip = {{ (hardening_fail2ban_ignoreips + hardening_fail2ban_extra_ignoreips + hardening_fail2ban_mgmt_ips + ([hub_backend_ip] if (vault_hub_backend_ip is defined and 'FILL_ME' not in (vault_hub_backend_ip | string)) else [])) | join(' ') }}
+findtime = {{ hardening_fail2ban_findtime }}
+maxretry = {{ hardening_fail2ban_maxretry }}
+bantime = {{ hardening_fail2ban_bantime }}
+{% if hardening_fail2ban_bantime_increment | bool %}
+; Escalating bans: repeat offenders are banned for progressively longer.
+bantime.increment = true
+bantime.maxtime = {{ hardening_fail2ban_bantime_maxtime }}
+bantime.factor = 2
+{% endif %}
+
+; LENIENT sshd jail: SSH is key-only so brute-force is toothless. High maxretry +
+; non-escalating bantime; only egregious persistent abuse is ever banned.
+[sshd]
+enabled = true
+port = {{ hardening_ssh_port }}
+mode = {{ hardening_fail2ban_sshd_mode }}
+maxretry = {{ hardening_fail2ban_maxretry }}
+
+{% if _hardening_nginx_present | default(false) %}
+[nginx-http-auth]
+enabled = true
+port = http,https
+
+[nginx-botsearch]
+enabled = true
+port = http,https
+
+[nginx-limit-req]
+enabled = true
+port = http,https
+{% else %}
+; nginx jails are omitted: nginx is not installed yet. They activate automatically
+; on the next hardening run after the proxy phase installs nginx.
+{% endif %}

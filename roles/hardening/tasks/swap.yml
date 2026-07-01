@@ -1,0 +1,45 @@
+---
+# Swap file as OOM insurance on the 1 vCPU / 1 GB box (4 GB on the 20 GB NVMe).
+# vm.swappiness / vfs_cache_pressure are set by the sysctl drop-in.
+
+- name: Stat the swap file
+  ansible.builtin.stat:
+    path: "{{ hardening_swap_file }}"
+  register: _hardening_swap
+
+- name: Allocate the swap file
+  ansible.builtin.command:
+    cmd: "fallocate -l {{ hardening_swap_size }} {{ hardening_swap_file }}"
+    creates: "{{ hardening_swap_file }}"
+
+- name: Secure swap file permissions
+  ansible.builtin.file:
+    path: "{{ hardening_swap_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Initialise the swap area (only when the file did not already exist)
+  ansible.builtin.command:
+    cmd: "mkswap {{ hardening_swap_file }}"
+  when: not _hardening_swap.stat.exists
+  changed_when: true
+
+- name: Persist the swap file in /etc/fstab
+  ansible.posix.mount:
+    path: none
+    src: "{{ hardening_swap_file }}"
+    fstype: swap
+    opts: sw
+    state: present
+
+- name: Check whether the swap file is currently active
+  ansible.builtin.command: swapon --show=NAME --noheadings
+  register: _hardening_swap_active
+  changed_when: false
+
+- name: Enable the swap file now
+  ansible.builtin.command:
+    cmd: "swapon {{ hardening_swap_file }}"
+  when: hardening_swap_file not in _hardening_swap_active.stdout
+  changed_when: true

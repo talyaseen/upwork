@@ -1,0 +1,11 @@
+---
+# Configure edge: base ufw hardening (22 + 443-from-Cloudflare-only) then the
+# nginx reverse proxy (Origin cert + AOP + static Flutter build + /api -> hub).
+#   ansible-playbook playbooks/edge.yml
+- name: Provision the edge reverse-proxy VPS
+  hosts: edge
+  become: true
+  gather_facts: true
+  roles:
+    - edge_base
+    - edge_proxy

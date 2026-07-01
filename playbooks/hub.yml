@@ -1,0 +1,30 @@
+---
+# ============================================================================
+# PREP / DO-NOT-APPLY until after `go`.
+#
+# Hub-side configuration for the chat /api leg:
+#   1. hub_mtls_proxy - nginx terminating the edge -> hub mutual-TLS leg
+#                       (requires edge's client cert) and proxying on loopback
+#                       to FastAPI 127.0.0.1:{{ hub_app_port }}.
+#   2. hub_allowlist  - ufw rule admitting ONLY edge's IP to the hub mTLS port.
+#
+# Run this LAST, only after edge + Cloudflare succeeded, the existing 1:1
+# edge<->hub cert pair is in place (or provided via vault *_content vars), and
+# the operator says go.
+#
+# Dry-run first (makes NO change):
+#   ansible-playbook playbooks/hub.yml --check --diff
+# Apply (only after go):
+#   ansible-playbook playbooks/hub.yml
+#
+# Default: runs LOCALLY on the hub (hub_connection=local). Set hub_connection=ssh
+# + hub_ansible_* in vault to drive it over SSH. The hub IP is a HARD secret and
+# appears in NO committed file.
+# ============================================================================
+- name: PREP - hub mTLS nginx + edge-only ufw allow (apply after go)
+  hosts: hub
+  become: true
+  gather_facts: false
+  roles:
+    - hub_mtls_proxy
+    - hub_allowlist

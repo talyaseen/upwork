@@ -1,0 +1,9 @@
+---
+# Configure the Cloudflare edge for the demo subdomain (DNS + SSL + Access + WAF).
+# Runs locally against the Cloudflare REST API; it does NOT contact any server.
+#   ansible-playbook playbooks/cloudflare.yml -e "cloudflare_api_token=$CF_API_TOKEN"
+- name: Configure the Cloudflare edge (proxied DNS, Full-strict SSL, Access, WAF)
+  hosts: cloudflare
+  gather_facts: false
+  roles:
+    - cloudflare_edge

@@ -1,0 +1,5 @@
+---
+# Tunable defaults for this role live centrally in group_vars/all/main.yml
+# (cloudflare_record_*, cloudflare_ssl_mode, cloudflare_security_level,
+# cloudflare_bot_fight_mode, cloudflare_ratelimit_* and cloudflare_api_base).
+# This file is kept for role self-containment; override in group_vars or vault.

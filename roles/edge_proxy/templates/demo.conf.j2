@@ -1,0 +1,110 @@
+# Managed by Ansible (roles/edge_proxy). CHAT DEMO vhost.
+#
+# {{ demo_fqdn }} -> static Flutter Web build at "/" PLUS "{{ api_location }}"
+# reverse-proxied to the hub FastAPI over a 1:1 MUTUAL-TLS leg.
+#
+# Two TLS legs meet here:
+#   - Cloudflare -> edge : terminated with the Cloudflare ORIGIN cert (Full
+#     strict) + Authenticated Origin Pulls (only Cloudflare reaches edge:443).
+#   - edge -> hub        : edge is the TLS CLIENT; it presents its client
+#     cert (proxy_ssl_certificate) and verifies the hub server cert against the
+#     shared mTLS CA. proxy_ssl_name is the hub cert CN ({{ hub_mtls_server_name }})
+#     - NOT the hub IP - so the upstream is verified without leaking the hub
+#     address. The hub IP itself comes from a vault-only secret.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ demo_fqdn }};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    # nginx < 1.25.1 (box has 1.24.0) has no standalone `http2 on;` directive -
+    # enable HTTP/2 on the listen line for backward compatibility.
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ demo_fqdn }};
+
+    ssl_certificate     {{ origin_cert_path }};
+    ssl_certificate_key {{ origin_key_path }};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+{% if aop_enabled | default(true) %}
+    # Authenticated Origin Pulls: only Cloudflare's client cert is accepted.
+    # Per-hostname AOP -> our custom CA; zone AOP -> Cloudflare's global CA.
+    ssl_client_certificate {{ aop_trust_path }};
+    ssl_verify_client on;
+{% endif %}
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-XSS-Protection "0" always;
+    server_tokens off;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_min_length 1024;
+    gzip_comp_level 5;
+    gzip_types text/plain text/css text/javascript application/javascript
+               application/json application/wasm image/svg+xml font/woff2;
+
+    root {{ demo_web_root }};
+    index index.html;
+
+    proxy_connect_timeout {{ proxy_connect_timeout | default('10s') }};
+    proxy_read_timeout {{ proxy_read_timeout | default('60s') }};
+
+{% if demo_block_admin_api | default(true) %}
+    # /api/admin/* is INTERNAL-ONLY: the admin lock/unlock endpoint is reached
+    # directly from the management subnet (10.0.0.0/24), NEVER through Cloudflare /
+    # the public edge. This longer-prefix location wins over {{ api_location }} for
+    # any /api/admin/* request and refuses it, so the public proxy never forwards
+    # admin calls to the hub.
+    location {{ api_location }}admin/ {
+        return 404;
+    }
+
+{% endif %}
+    # API -> the HUB over mutual TLS. The hub nginx (listening on the mTLS port)
+    # requires THIS client cert; it then proxies to FastAPI on 127.0.0.1.
+    location {{ api_location }} {
+        proxy_pass https://{{ hub_backend_ip }}:{{ hub_mtls_port }}/;
+
+        # Present edge's client cert to the hub (mutual TLS).
+        proxy_ssl_certificate     {{ edge_client_cert_path }};
+        proxy_ssl_certificate_key {{ edge_client_key_path }};
+        # Verify the hub's server cert against the shared mTLS CA.
+        proxy_ssl_trusted_certificate {{ mtls_ca_path }};
+{% if edge_upstream_verify | default(true) %}
+        proxy_ssl_verify on;
+        proxy_ssl_verify_depth {{ edge_upstream_verify_depth | default(2) }};
+{% else %}
+        proxy_ssl_verify off;
+{% endif %}
+        # SNI / verified name = the hub cert CN, never the hub IP.
+        proxy_ssl_name {{ hub_mtls_server_name }};
+        proxy_ssl_server_name on;
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        # OVERWRITE (never append) X-Forwarded-For. Using $proxy_add_x_forwarded_for
+        # would carry through a client-supplied XFF header, so any downstream service
+        # that trusts XFF for access decisions could be fed a spoofed source IP. By
+        # setting it to $remote_addr only, the upstream receives a trustworthy value:
+        # here $remote_addr is ALWAYS the Cloudflare edge (AOP + ufw admit only CF).
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

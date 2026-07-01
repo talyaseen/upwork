@@ -1,0 +1,257 @@
+---
+# Configures nginx on edge with TWO vhosts:
+#   1. apex example.com (+ www) = PURE STATIC portfolio (no /api, no hub).
+#   2. chat.example.com = static Flutter at "/" PLUS "/api/" reverse-proxied
+#      to the hub over a 1:1 MUTUAL-TLS leg (edge presents its client cert).
+# Both vhosts terminate the Cloudflare->edge hop with the Cloudflare Origin
+# cert (Full strict) and enforce Authenticated Origin Pulls. No certbot - public
+# TLS is Cloudflare's edge cert.
+
+- name: Assert required variables are set
+  ansible.builtin.assert:
+    that:
+      - domain is defined
+      - demo_fqdn is defined
+      - cloudflare_origin_cert is defined and 'BEGIN CERTIFICATE' in cloudflare_origin_cert
+      - "'FILL_ME' not in cloudflare_origin_cert"
+      - cloudflare_origin_key is defined and 'PRIVATE KEY' in cloudflare_origin_key
+      - hub_backend_ip is defined and 'FILL_ME' not in hub_backend_ip
+      - hub_mtls_port is defined
+      - portfolio_dist is defined and 'FILL_ME' not in portfolio_dist
+      - flutter_dist is defined and 'FILL_ME' not in flutter_dist
+    fail_msg: >-
+      Fill group_vars/all/vault.yml before applying (origin cert/key,
+      hub_backend_ip, portfolio_dist, flutter_dist).
+
+- name: Install nginx and rsync (Debian/Ubuntu family)
+  ansible.builtin.package:
+    name:
+      - nginx
+      - rsync
+    state: present
+
+# ---- Cloudflare Origin certificate + key (Cloudflare -> edge, Full strict) ----
+- name: Ensure the Cloudflare TLS dir exists
+  ansible.builtin.file:
+    path: "{{ edge_tls_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install the Cloudflare Origin certificate
+  ansible.builtin.copy:
+    content: "{{ cloudflare_origin_cert }}"
+    dest: "{{ origin_cert_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Install the Cloudflare Origin private key
+  ansible.builtin.copy:
+    content: "{{ cloudflare_origin_key }}"
+    dest: "{{ origin_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Reload nginx
+
+# ---- Authenticated Origin Pulls trust anchor (origin verifies Cloudflare) ----
+# zone mode        -> fetch Cloudflare's PUBLIC global AOP CA.
+# per_hostname mode -> pin OUR custom CA. Cloudflare presents a leaf signed by it;
+#   the CA PEM comes from aop_custom_ca_content (gitignored vault.local.yml) or is
+#   referenced by path if already on the box (like the 1:1 mTLS pair). The leaf
+#   PRIVATE KEY lives ONLY on Cloudflare - it is never installed on the origin.
+- name: Fetch the public Cloudflare AOP CA (zone-global AOP mode)
+  ansible.builtin.get_url:
+    url: "{{ aop_ca_url }}"
+    dest: "{{ aop_ca_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - aop_enabled | bool
+    - (aop_mode | default('per_hostname')) == 'zone'
+
+- name: Install the custom AOP CA (per-hostname AOP; only if content supplied)
+  ansible.builtin.copy:
+    content: "{{ aop_custom_ca_content }}"
+    dest: "{{ aop_custom_ca_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - aop_enabled | bool
+    - (aop_mode | default('per_hostname')) == 'per_hostname'
+    - aop_custom_ca_content is defined
+    - "'FILL_ME' not in aop_custom_ca_content"
+  notify: Reload nginx
+
+- name: Verify the AOP trust anchor is present on the origin
+  ansible.builtin.stat:
+    path: "{{ aop_trust_path }}"
+  register: _aop_ca_stat
+  when: aop_enabled | bool
+
+- name: Fail early if the AOP trust anchor is missing
+  ansible.builtin.assert:
+    that:
+      - _aop_ca_stat.stat.exists
+    fail_msg: >-
+      The AOP trust anchor {{ aop_trust_path }} is missing on the origin. For
+      per-hostname AOP, supply aop_custom_ca_content in vault.local.yml (or place
+      the CA PEM at that path). For zone AOP, ensure the CA fetch succeeded.
+  when: aop_enabled | bool
+
+# ---- edge <-> hub mutual-TLS client material (for the chat /api leg) ----
+# The 1:1 edge<->hub pair already exists; by default we REFERENCE the files at
+# the configured paths. We install PEM only if *_content vars were supplied.
+- name: Ensure the mTLS dir exists
+  ansible.builtin.file:
+    path: "{{ mtls_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install the edge client certificate (only if content supplied)
+  ansible.builtin.copy:
+    content: "{{ edge_client_cert_content }}"
+    dest: "{{ edge_client_cert_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: edge_client_cert_content is defined and 'FILL_ME' not in edge_client_cert_content
+  notify: Reload nginx
+
+- name: Install the edge client private key (only if content supplied)
+  ansible.builtin.copy:
+    content: "{{ edge_client_key_content }}"
+    dest: "{{ edge_client_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: edge_client_key_content is defined and 'FILL_ME' not in edge_client_key_content
+  notify: Reload nginx
+
+- name: Install the shared mTLS CA (only if content supplied)
+  ansible.builtin.copy:
+    content: "{{ mtls_ca_content }}"
+    dest: "{{ mtls_ca_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: mtls_ca_content is defined and 'FILL_ME' not in mtls_ca_content
+  notify: Reload nginx
+
+- name: Verify the mTLS client material is present on edge
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: _mtls_stat
+  loop:
+    - "{{ edge_client_cert_path }}"
+    - "{{ edge_client_key_path }}"
+    - "{{ mtls_ca_path }}"
+
+- name: Fail early if any mTLS file is missing (existing 1:1 pair not in place)
+  ansible.builtin.assert:
+    that:
+      - _mtls_stat.results | selectattr('stat.exists', 'equalto', false) | list | length == 0
+    fail_msg: >-
+      The edge<->hub mutual-TLS material is missing on edge
+      ({{ _mtls_stat.results | selectattr('stat.exists', 'equalto', false)
+          | map(attribute='item') | list | join(', ') }}).
+      Either place the existing 1:1 pair at those paths, or supply the *_content
+      vars in vault.yml so this role installs them.
+
+# ---- Static build roots ----
+- name: Ensure the portfolio + demo web roots exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0755"
+  loop:
+    - "{{ portfolio_web_root }}"
+    - "{{ demo_web_root }}"
+
+- name: Sync the static PORTFOLIO build to edge (apex)
+  ansible.posix.synchronize:
+    src: "{{ portfolio_dist }}/"
+    dest: "{{ portfolio_web_root }}/"
+    delete: true
+    recursive: true
+    rsync_opts:
+      - "--chmod=D755,F644"
+  tags: ["frontend", "portfolio"]
+
+- name: Sync the Flutter DEMO build to edge (chat)
+  ansible.posix.synchronize:
+    src: "{{ flutter_dist }}/"
+    dest: "{{ demo_web_root }}/"
+    delete: true
+    recursive: true
+    rsync_opts:
+      - "--chmod=D755,F644"
+  tags: ["frontend", "demo"]
+
+- name: Fix ownership of the synced web roots
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    recurse: true
+  loop:
+    - "{{ portfolio_web_root }}"
+    - "{{ demo_web_root }}"
+  tags: ["frontend"]
+
+# ---- nginx vhosts ----
+- name: Deploy the PORTFOLIO vhost (apex + www, static only)
+  ansible.builtin.template:
+    src: portfolio.conf.j2
+    dest: "/etc/nginx/sites-available/{{ portfolio_site_name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Deploy the DEMO vhost (chat, static + /api mTLS upstream)
+  ansible.builtin.template:
+    src: demo.conf.j2
+    dest: "/etc/nginx/sites-available/{{ demo_site_name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Disable the stock default vhost
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Enable the portfolio + demo vhosts
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ item }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ item }}.conf"
+    state: link
+  loop:
+    - "{{ portfolio_site_name }}"
+    - "{{ demo_site_name }}"
+  notify: Reload nginx
+
+- name: Validate the nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Ensure nginx is running and enabled
+  ansible.builtin.systemd:
+    name: nginx
+    state: started
+    enabled: true

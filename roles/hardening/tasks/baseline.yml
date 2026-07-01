@@ -1,0 +1,102 @@
+---
+# Security baseline: hostname, time sync, login banner, automation-user sudo,
+# shared-memory hardening, optional auditd, and removal of unused services.
+
+# ---- Hostname (idempotent; bootstrap also sets it - harmless to re-assert) ----
+- name: Set the system hostname
+  ansible.builtin.hostname:
+    name: "{{ hardening_hostname }}"
+  when: hardening_set_hostname | bool
+
+- name: Ensure /etc/hosts maps 127.0.1.1 to the hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    line: "127.0.1.1 {{ hardening_hostname }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: hardening_set_hostname | bool
+
+# ---- Time sync (systemd-timesyncd ships with Ubuntu 24.04) ----
+- name: Ensure systemd-timesyncd is installed
+  ansible.builtin.package:
+    name: systemd-timesyncd
+    state: present
+  when: hardening_timesync_enabled | bool
+
+- name: Enable and start time synchronization
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    enabled: true
+    state: started
+  when: hardening_timesync_enabled | bool
+
+# ---- Login banner (also referenced as sshd Banner) ----
+- name: Deploy /etc/issue.net pre-auth banner
+  ansible.builtin.template:
+    src: issue.net.j2
+    dest: /etc/issue.net
+    owner: root
+    group: root
+    mode: "0644"
+  when: hardening_manage_motd_banner | bool
+
+- name: Deploy /etc/issue local console banner
+  ansible.builtin.template:
+    src: issue.net.j2
+    dest: /etc/issue
+    owner: root
+    group: root
+    mode: "0644"
+  when: hardening_manage_motd_banner | bool
+
+# ---- Automation-user sudo ----
+- name: Configure passwordless sudo for the automation admin user
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ hardening_admin_user }}"
+    content: "{{ hardening_admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "/usr/sbin/visudo -cf %s"
+  when: hardening_passwordless_sudo | bool
+
+- name: Remove passwordless-sudo drop-in when disabled
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/90-{{ hardening_admin_user }}"
+    state: absent
+  when: not (hardening_passwordless_sudo | bool)
+
+# ---- Shared memory hardening ----
+- name: Harden /run/shm (noexec,nosuid,nodev)
+  ansible.posix.mount:
+    path: /run/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "defaults,noexec,nosuid,nodev"
+    state: present
+  when: hardening_secure_shared_memory | bool
+  notify: Remount run shm
+
+# ---- Optional lightweight auditd ----
+- name: Install auditd (optional)
+  ansible.builtin.package:
+    name: auditd
+    state: present
+  when: hardening_auditd_enabled | bool
+
+- name: Enable and start auditd (optional)
+  ansible.builtin.systemd:
+    name: auditd
+    enabled: true
+    state: started
+  when: hardening_auditd_enabled | bool
+
+# ---- Remove / disable unused listening services ----
+- name: Remove unused services (best-effort; ignored if not installed)
+  ansible.builtin.apt:
+    name: "{{ hardening_unused_services }}"
+    state: absent
+    purge: true
+  when: hardening_remove_unused_services | bool

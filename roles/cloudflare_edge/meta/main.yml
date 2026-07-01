@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  author: Talal Alyaseen
+  license: MIT
+  role_name: cloudflare_edge
+  description: >-
+    Configure the Cloudflare edge via the REST API for a PUBLIC proxied demo +
+    portfolio: proxied (orange-cloud) A records (apex + www + chat) -> edge,
+    Full-strict SSL + Authenticated Origin Pulls, Security Level High + Bot Fight
+    Mode (+ optional managed WAF), and an /api rate-limit rule. No server contact.
+  min_ansible_version: "2.14"
+dependencies: []

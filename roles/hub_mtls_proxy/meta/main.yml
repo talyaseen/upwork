@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  author: Talal Alyaseen
+  license: MIT
+  role_name: hub_mtls_proxy
+  description: >-
+    PREP / DO-NOT-APPLY: hub-side nginx terminating the edge -> hub mutual-TLS
+    leg. Requires edge's client cert (ssl_verify_client on against the shared
+    mTLS CA) and proxies on loopback to the FastAPI app. Templated, not applied
+    until go.
+  min_ansible_version: "2.14"
+dependencies: []

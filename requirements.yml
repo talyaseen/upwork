@@ -1,0 +1,8 @@
+---
+# Ansible collections this IaC needs. Install with:
+#   ansible-galaxy collection install -r requirements.yml
+collections:
+  - name: community.general   # ufw module
+    version: ">=8.0.0"
+  - name: ansible.posix       # synchronize (rsync the Flutter build to edge)
+    version: ">=1.5.0"

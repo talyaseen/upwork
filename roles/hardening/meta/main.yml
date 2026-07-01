@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: Talal Alyaseen
+  license: MIT
+  role_name: hardening
+  description: >-
+    Comprehensive idempotent host hardening for the edge-01
+    Ubuntu 24.04 reverse-proxy VPS: sshd key-only hardening (anti-lockout safe
+    ordering), fail2ban (sshd + guarded nginx jails), unattended security upgrades,
+    sysctl kernel/network hardening, and a security baseline (timesync, banner,
+    passwordless-sudo automation user, unused-service removal). Firewall (ufw) is
+    owned by edge_base and intentionally NOT duplicated here.
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+dependencies: []

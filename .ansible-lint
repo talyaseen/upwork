@@ -1,0 +1,15 @@
+# ansible-lint config for demo-deploy-infra.
+#
+# We intentionally use leading-underscore, NON-role-prefixed names for ephemeral
+# task-local registers / set_fact results (e.g. _cf_zone_id, _cf_cidrs,
+# _include_rules). They are private scratch vars, never part of a role's public
+# interface, and the underscore already signals "internal". Enforcing a role
+# prefix on them would only add noise, so we disable that single sub-rule.
+skip_list:
+  - var-naming[no-role-prefix]
+
+# vault.yml is gitignored real secrets and is created from vault.example.yml at
+# run time; it is not part of the linted source.
+exclude_paths:
+  - .venv/
+  - group_vars/all/vault.yml

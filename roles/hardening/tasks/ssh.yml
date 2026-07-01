@@ -1,0 +1,52 @@
+---
+# SSH hardening with HARD anti-lockout ordering.
+#
+# Password auth is only disabled AFTER we prove an authorized key exists for the
+# admin user AND that this very Ansible run is connected as that admin user. The
+# harden play itself connects over the key (installed + verified by bootstrap.yml),
+# so a broken key can never reach this code path - but we assert anyway.
+
+- name: Ensure openssh-server is installed
+  ansible.builtin.package:
+    name: openssh-server
+    state: present
+
+- name: Stat the admin user's authorized_keys
+  ansible.builtin.stat:
+    path: "/home/{{ hardening_admin_user }}/.ssh/authorized_keys"
+  register: _hardening_authkeys
+
+- name: ANTI-LOCKOUT - refuse to disable password auth without a usable admin key
+  ansible.builtin.assert:
+    that:
+      - _hardening_authkeys.stat.exists
+      - _hardening_authkeys.stat.size | int > 0
+      - ansible_user == hardening_admin_user
+    fail_msg: >-
+      Refusing to disable SSH password auth: either {{ hardening_admin_user }} has
+      no authorized_keys ({{ _hardening_authkeys.stat.exists }}), the file is empty,
+      or this run is not connected as the admin user (ansible_user={{ ansible_user }}).
+      Run playbooks/bootstrap.yml first (installs + verifies the key), then re-run
+      over the key. Never disable password auth from a password session.
+  when: hardening_ssh_disable_password | bool
+
+- name: Deploy hardened sshd drop-in (validated before install)
+  ansible.builtin.template:
+    src: sshd_hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/60-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    # Validate the fragment's syntax BEFORE it is moved into place. If invalid,
+    # the file is never written and the running sshd is untouched (no lockout).
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: Reload ssh
+
+- name: Remove cloud-init's permissive sshd drop-in if present
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+    state: absent
+  notify: Reload ssh
+
+- name: Flush handlers so sshd is reloaded before we move on
+  ansible.builtin.meta: flush_handlers

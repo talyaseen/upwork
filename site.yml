@@ -1,0 +1,19 @@
+---
+# Full deploy, in dependency order:
+#   1. Cloudflare edge - proxied (orange-cloud) A records (apex + www + chat,
+#                        must exist + propagate first), Full-strict SSL,
+#                        Authenticated Origin Pulls, Security Level High + Bot
+#                        Fight Mode, and the chat /api rate-limit rule.
+#   2. edge          - ufw (22 + 443-from-Cloudflare-only) + nginx TWO vhosts:
+#                        apex static portfolio, and chat (static Flutter + /api
+#                        proxied to the hub over the 1:1 mutual-TLS leg).
+#
+# The hub-side configuration (playbooks/hub.yml: mTLS nginx + the edge-only ufw
+# allow rule) is PREP / DO-NOT-APPLY and is intentionally NOT part of site.yml -
+# run it LAST, only after `go`.
+#
+#   ansible-playbook site.yml -e "cloudflare_api_token=$CF_API_TOKEN"
+- name: Cloudflare edge (proxied DNS + SSL + security + rate-limit)
+  import_playbook: playbooks/cloudflare.yml
+- name: Edge reverse proxy (ufw + two-vhost nginx)
+  import_playbook: playbooks/edge.yml

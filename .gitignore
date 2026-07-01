@@ -1,0 +1,42 @@
+# ============================================================================
+# SECRETS MODEL (this is a public reference repo)
+#
+# COMMITTED (tracked):
+#   group_vars/all/vars.yml                - non-secret config + references to vault_* vars
+#   group_vars/all/vault.example.yml       - plaintext placeholders documenting vault.yml
+#   group_vars/all/vault.local.example.yml - placeholders for the never-commit values
+#
+# NEVER COMMITTED (gitignored, below):
+#   group_vars/all/vault.yml         - your real rotatable secrets. Create it from
+#                                      vault.example.yml and encrypt with ansible-vault.
+#                                      Gitignored here so no real (even encrypted)
+#                                      secret can be committed to a public repo.
+#   group_vars/all/vault.local.yml   - the HARD-EXCEPTION values that must never be
+#                                      committed even encrypted: hub_backend_ip and the
+#                                      edge<->hub mTLS PRIVATE KEY (+ the edge public IP).
+#   .vault_pass                      - the ansible-vault password (NEVER commit).
+# ============================================================================
+group_vars/all/vault.yml
+group_vars/all/vault.local.yml
+**/vault.yml
+**/vault.local.yml
+
+# ansible-vault password file (point ANSIBLE_VAULT_PASSWORD_FILE at it)
+.vault_pass
+
+# host_vars carry real per-host values
+host_vars/**
+
+# Per-hostname AOP custom cert material (CA + client leaf + key). The leaf PRIVATE
+# KEY is a secret; the whole dir is generated + never committed.
+.aop-certs/
+
+# Ansible runtime artifacts
+*.retry
+*.log
+fact_cache/
+
+# Local tooling / Python venv used only to run syntax-check + lint
+.venv/
+__pycache__/
+*.pyc

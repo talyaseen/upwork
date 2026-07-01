@@ -1,0 +1,168 @@
+---
+# ============================================================================
+# BOOTSTRAP - run ONCE, first contact with edge-01.
+#
+# KEY-FIRST: the operator pre-adds the hub automation public key
+# (~/.ssh/id_ed25519_edge_host.pub) to the box, so the default path connects
+# straight over the KEY - no password needed. It sets the hostname, ensures sudo,
+# grants the automation user passwordless sudo, and VERIFIES key login. It does
+# NOT disable password auth (that is playbooks/harden.yml, over the verified key) -
+# the split is the anti-lockout guarantee.
+#
+# PASSWORD FALLBACK (only if the key was NOT pre-added): re-run with
+#   ansible-playbook playbooks/bootstrap.yml -e bootstrap_use_password=true
+# which connects over the initial provider password ONCE to install the key, then
+# the key path takes over. Requires `sshpass` on the control machine and
+# vault_edge_host_initial_password set in vault.local.yml.
+#
+#   ansible-playbook playbooks/bootstrap.yml
+# ============================================================================
+
+# --- Play 0: make sure the hub->box keypair exists locally (no passphrase) ---
+- name: Ensure the edge-01 automation keypair exists on the hub
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [bootstrap, keygen]
+  tasks:
+    - name: Assert the box IP is filled (not a placeholder)
+      ansible.builtin.assert:
+        that:
+          - edge_host_ip is defined
+          - "'FILL_ME' not in (edge_host_ip | string)"
+        fail_msg: >-
+          Fill vault_edge_public_ip (the box IP) in
+          group_vars/all/vault.local.yml before bootstrapping. The operator
+          relays it at apply time.
+
+    - name: Assert the initial password is filled when using the password fallback
+      ansible.builtin.assert:
+        that:
+          - edge_host_initial_password is defined
+          - "'FILL_ME' not in (edge_host_initial_password | string)"
+        fail_msg: >-
+          bootstrap_use_password=true but vault_edge_host_initial_password is
+          not set in vault.local.yml. Set it, or pre-add the key and drop the flag.
+      when: bootstrap_use_password | default(false) | bool
+
+    - name: Generate the ed25519 automation keypair if missing (no passphrase)
+      ansible.builtin.command:
+        cmd: >-
+          ssh-keygen -t ed25519 -N '' -C 'ansible@hub->edge-01'
+          -f {{ edge_host_ssh_key_path | expanduser }}
+        creates: "{{ edge_host_ssh_key_path | expanduser }}"
+
+    - name: Lock down the private key permissions
+      ansible.builtin.file:
+        path: "{{ edge_host_ssh_key_path | expanduser }}"
+        mode: "0600"
+
+# --- Play 1: PASSWORD FALLBACK - install the key over the initial password ---
+#     Skipped entirely unless -e bootstrap_use_password=true.
+- name: (Fallback) install the hub key over the initial password
+  hosts: edge
+  gather_facts: false
+  become: true
+  tags: [bootstrap, fallback]
+  vars:
+    # Force a PASSWORD connection for this play only (ignore the inventory key).
+    ansible_user: "{{ edge_host_admin_user }}"
+    ansible_password: "{{ edge_host_initial_password }}"
+    ansible_become_password: "{{ edge_host_initial_password }}"
+    ansible_ssh_private_key_file: null
+    ansible_ssh_common_args: >-
+      -o StrictHostKeyChecking=accept-new
+      -o PreferredAuthentications=password
+      -o PubkeyAuthentication=no
+  tasks:
+    - name: Skip the password fallback unless explicitly requested
+      ansible.builtin.meta: end_play
+      when: not (bootstrap_use_password | default(false) | bool)
+
+    - name: Wait for SSH to answer (password)
+      ansible.builtin.wait_for_connection:
+        timeout: 60
+
+    - name: Ensure the admin user exists and has sudo
+      ansible.builtin.user:
+        name: "{{ edge_host_admin_user }}"
+        groups: sudo
+        append: true
+        shell: /bin/bash
+        state: present
+
+    - name: Install the hub automation public key for the admin user
+      ansible.posix.authorized_key:
+        user: "{{ edge_host_admin_user }}"
+        key: "{{ lookup('file', edge_host_pubkey_path | expanduser) }}"
+        state: present
+        exclusive: false
+
+# --- Play 2: KEY bootstrap - hostname, sudo baseline, verify (anti-lockout) ---
+- name: Bootstrap edge-01 over the automation key
+  hosts: edge
+  gather_facts: false
+  become: true
+  tags: [bootstrap]
+  vars:
+    # The inventory connection is the key. become uses the initial password only
+    # if NOPASSWD sudo is not yet in place (first run); omitted otherwise.
+    ansible_become_password: >-
+      {{ edge_host_initial_password
+         if (edge_host_initial_password is defined
+              and 'FILL_ME' not in (edge_host_initial_password | string))
+         else omit }}
+  tasks:
+    - name: Reset the connection so the key (not a cached password) is used
+      ansible.builtin.meta: reset_connection
+
+    - name: Confirm key login works as the admin user (anti-lockout gate)
+      ansible.builtin.command: id -un
+      register: _bootstrap_whoami
+      changed_when: false
+      become: false
+
+    - name: Assert key login landed as the expected user
+      ansible.builtin.assert:
+        that:
+          - _bootstrap_whoami.stdout == edge_host_admin_user
+        success_msg: >-
+          Key login verified as {{ edge_host_admin_user }}. Safe to run
+          playbooks/harden.yml (which disables password auth over this key).
+        fail_msg: >-
+          Key login did NOT succeed as {{ edge_host_admin_user }}. If the key
+          was not pre-added, re-run with -e bootstrap_use_password=true. DO NOT run
+          harden.yml until key login works.
+
+    - name: Gather facts now that the key works
+      ansible.builtin.setup:
+
+    - name: Ensure the admin user has sudo
+      ansible.builtin.user:
+        name: "{{ edge_host_admin_user }}"
+        groups: sudo
+        append: true
+        state: present
+
+    - name: Set the hostname
+      ansible.builtin.hostname:
+        name: "{{ edge_host_hostname }}"
+
+    - name: Map 127.0.1.1 to the hostname in /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1\s'
+        line: "127.0.1.1 {{ edge_host_hostname }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Grant the automation user passwordless sudo
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/90-{{ edge_host_admin_user }}"
+        content: "{{ edge_host_admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "/usr/sbin/visudo -cf %s"
+      when: edge_host_passwordless_sudo | default(true) | bool

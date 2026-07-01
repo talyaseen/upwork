@@ -1,0 +1,46 @@
+---
+# hardening role entrypoint. Ordered so each layer is independent and idempotent.
+# The firewall is owned by edge_base (run first by playbooks/harden.yml); this
+# role never touches ufw policy.
+
+- name: Assert this is a supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'Debian'
+    fail_msg: "hardening role targets Debian/Ubuntu only (got {{ ansible_facts['os_family'] }})."
+  tags: [always]
+
+- name: Baseline (hostname, timesync, banner, sudo, services)
+  ansible.builtin.import_tasks: baseline.yml
+  tags: [hardening, baseline]
+
+- name: Swap file (OOM insurance on the 1 GB box)
+  ansible.builtin.import_tasks: swap.yml
+  when: hardening_swap_enabled | bool
+  tags: [hardening, swap]
+
+- name: SSH hardening (anti-lockout, key-only)
+  ansible.builtin.import_tasks: ssh.yml
+  tags: [hardening, ssh]
+
+- name: Fail2ban
+  ansible.builtin.import_tasks: fail2ban.yml
+  when: hardening_fail2ban_enabled | bool
+  tags: [hardening, fail2ban]
+
+- name: Unattended security upgrades
+  ansible.builtin.import_tasks: unattended_upgrades.yml
+  when: hardening_unattended_enabled | bool
+  tags: [hardening, unattended]
+
+- name: Sysctl kernel / network hardening
+  ansible.builtin.import_tasks: sysctl.yml
+  when: hardening_sysctl_enabled | bool
+  tags: [hardening, sysctl]
+
+# MUST be LAST: every package install above is done, so flipping the default
+# outgoing policy to deny cannot break apt mid-run.
+- name: Egress filtering (ufw default-deny outgoing + allowlist)
+  ansible.builtin.import_tasks: egress.yml
+  when: hardening_egress_filtering | bool
+  tags: [hardening, egress]

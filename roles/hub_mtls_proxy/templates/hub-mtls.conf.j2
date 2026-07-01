@@ -1,0 +1,59 @@
+# Managed by Ansible (roles/hub_mtls_proxy). PREP / DO-NOT-APPLY.
+#
+# Hub-side terminator for the edge -> hub MUTUAL-TLS leg. Listens on the mTLS
+# port and REQUIRES edge's client cert (signed by the shared mTLS CA), then
+# proxies cleartext on loopback to the FastAPI app. Only edge - presenting the
+# 1:1 pair - can reach the backend; everything else fails the client-cert check.
+# Bind to all interfaces but the hub ufw admits ONLY edge's IP on this port.
+
+server {
+    # nginx < 1.25.1 has no standalone `http2 on;` directive - enable HTTP/2 on
+    # the listen line for backward compatibility (hub + edge both run 1.24.x).
+    listen {{ hub_mtls_port }} ssl http2;
+    listen [::]:{{ hub_mtls_port }} ssl http2;
+    server_name {{ hub_mtls_server_name }};
+
+    # Hub server cert (the 1:1 pair's server end).
+    ssl_certificate     {{ hub_mtls_server_cert_path }};
+    ssl_certificate_key {{ hub_mtls_server_key_path }};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # Mutual TLS: require + verify edge's CLIENT cert against the shared CA.
+    ssl_client_certificate {{ mtls_ca_path }};
+    ssl_verify_client on;
+    ssl_verify_depth {{ edge_upstream_verify_depth | default(2) }};
+
+    # Reject anything that is not a verified edge client at the edge of nginx.
+    if ($ssl_client_verify != SUCCESS) {
+        return 403;
+    }
+
+    server_tokens off;
+
+{% if hub_block_admin_api | default(true) %}
+    # DEFENSE-IN-DEPTH: refuse the admin lock/unlock endpoint on the public/mTLS
+    # path. Public traffic reaches FastAPI as 127.0.0.1 THROUGH this nginx, so if we
+    # forwarded admin here a public user would pass the app's localhost allow. The
+    # regex matches both /api/admin/* and the prefix-stripped /admin/* (the edge
+    # proxy strips the /api/ prefix), and a regex location wins over "location /".
+    # /api/admin stays reachable ONLY from localhost + the mgmt subnet, which hit
+    # FastAPI :{{ hub_app_port }} DIRECTLY (not through this mTLS vhost).
+    location ~ ^/(api/)?admin/ {
+        return 404;
+    }
+
+{% endif %}
+    location / {
+        # Cleartext on loopback to the FastAPI app on the hub.
+        proxy_pass http://127.0.0.1:{{ hub_app_port }}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+        proxy_connect_timeout {{ proxy_connect_timeout | default('10s') }};
+        proxy_read_timeout {{ proxy_read_timeout | default('60s') }};
+    }
+}

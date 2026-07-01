@@ -1,0 +1,40 @@
+---
+# ============================================================================
+# DOCUMENTS the structure of group_vars/all/vault.yml (the ENCRYPTED, committed
+# vault of ROTATABLE secrets). This .example file is plaintext placeholders only.
+#
+# Workflow (see README "Secrets"):
+#   1. echo 'your-strong-vault-password' > .vault_pass   (gitignored)
+#   2. export ANSIBLE_VAULT_PASSWORD_FILE="$PWD/.vault_pass"
+#   3. cp vault.example.yml vault.yml ; $EDITOR vault.yml   (put REAL values)
+#   4. ansible-vault encrypt group_vars/all/vault.yml
+#      (or: ansible-vault create group_vars/all/vault.yml)
+#   5. edit later with: ansible-vault edit group_vars/all/vault.yml
+#
+# These are SAFE to keep in the encrypted vault.yml (rotatable). The hub IP and
+# the edge<->hub mTLS PRIVATE KEY are NOT here - they go in the gitignored
+# vault.local.yml (see vault.local.example.yml).
+# ============================================================================
+
+# Cloudflare API token. Scopes: Zone:Read, Zone.DNS:Edit, Zone.SSL and
+# Certificates:Edit, Zone Settings:Edit, Zone WAF:Edit, Zone Rate Limit:Edit.
+# (Can also be overridden on the CLI from /home/deploy/.cloudflare.env.)
+vault_cloudflare_api_token: "FILL_ME-scoped-cloudflare-api-token"
+
+# Cloudflare Account ID (for completeness; kept with the CF set).
+vault_cloudflare_account_id: "FILL_ME-cloudflare-account-id"
+
+# Cloudflare ORIGIN certificate + key (dashboard -> SSL/TLS -> Origin Server).
+# Cover BOTH example.com AND *.example.com. Rotatable.
+vault_cloudflare_origin_cert: |
+  -----BEGIN CERTIFICATE-----
+  FILL_ME-cloudflare-origin-certificate
+  -----END CERTIFICATE-----
+vault_cloudflare_origin_key: |
+  -----BEGIN PRIVATE KEY-----
+  FILL_ME-cloudflare-origin-private-key
+  -----END PRIVATE KEY-----
+
+# Private key PATH on the control machine used to SSH into edge (the key file
+# itself is not stored here - just where to find it).
+vault_edge_ssh_key_path: "~/.ssh/id_edge"

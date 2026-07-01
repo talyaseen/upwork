@@ -1,0 +1,87 @@
+---
+# edge base hardening. Brings up ufw with a deny-by-default posture:
+#   - default deny incoming, default allow outgoing
+#   - allow 22/tcp (SSH, open)
+#   - allow 443/tcp ONLY from Cloudflare's published IPv4 + IPv6 ranges
+# Result: edge:443 is reachable ONLY through Cloudflare's edge. Direct hits to
+# edge's origin IP on 443 are dropped at the firewall (defense-in-depth on top
+# of Authenticated Origin Pulls, which enforces Cloudflare-only at the TLS layer).
+
+- name: Assert edge IP is filled (not the FILL_ME placeholder)
+  ansible.builtin.assert:
+    that:
+      - edge_public_ip is defined
+      - "'FILL_ME' not in edge_public_ip"
+    fail_msg: >-
+      edge_public_ip is still a FILL_ME placeholder. edge is provisioned
+      AFTER you set its real public IP in group_vars/all/vault.yml. Do not run
+      this play until edge exists and its IP is filled.
+
+- name: Install ufw and rsync
+  ansible.builtin.package:
+    name:
+      - ufw
+      - rsync
+    state: present
+
+# Fetch Cloudflare's published ranges so ONLY Cloudflare can reach :443.
+- name: Fetch Cloudflare published IPv4 + IPv6 ranges
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    return_content: true
+  register: _cf_ip_lists
+  loop:
+    - "{{ cloudflare_ipv4_url }}"
+    - "{{ cloudflare_ipv6_url }}"
+
+- name: Build the Cloudflare CIDR allow-list
+  ansible.builtin.set_fact:
+    # Cloudflare returns one CIDR per line. Extract every CIDR token (IPv4 + IPv6)
+    # with regex_findall rather than a newline split: a literal '\n' inside a Jinja
+    # folded scalar is NOT a real newline, so join('\n')/.split('\n') collapsed all
+    # lines into 2 blobs and the 443 allow-list came out empty (guarded below).
+    _cf_cidrs: >-
+      {{ _cf_ip_lists.results | map(attribute='content')
+         | map('regex_findall', '[0-9A-Fa-f:.]+/[0-9]+') | flatten | list }}
+
+- name: Sanity-check we actually got Cloudflare ranges
+  ansible.builtin.assert:
+    that:
+      - _cf_cidrs | length >= 10
+    fail_msg: >-
+      Fetched fewer Cloudflare CIDRs than expected ({{ _cf_cidrs | length }}).
+      Refusing to apply a 443 allow-list that might lock out Cloudflare. Check
+      connectivity to cloudflare.com/ips-v4 and ips-v6.
+
+# Default policies FIRST (deny incoming, allow outgoing). ufw module sets policy
+# without enabling; we open SSH before enabling so we never lock ourselves out.
+- name: Set default policy - deny incoming
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+
+- name: Set default policy - allow outgoing
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+
+- name: Allow inbound SSH (22/tcp)
+  community.general.ufw:
+    rule: allow
+    port: "{{ edge_ssh_port | default(22) }}"
+    proto: tcp
+    comment: "SSH admin (edge base, Ansible-managed)"
+
+- name: Allow inbound 443/tcp ONLY from Cloudflare ranges
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+    from_ip: "{{ item }}"
+    comment: "Cloudflare edge -> edge:443 (Ansible-managed)"
+  loop: "{{ _cf_cidrs }}"
+
+- name: Enable ufw (logging on)
+  community.general.ufw:
+    state: enabled
+    logging: "on"

@@ -1,0 +1,4 @@
+---
+# Tunable defaults for this role live centrally in group_vars/all/main.yml
+# (hub_mtls_port, hub_app_port, hub_mtls_server_name, mtls_* paths). This file is
+# kept for role self-containment; override any value in group_vars or vault.
