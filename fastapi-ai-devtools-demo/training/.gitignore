@@ -1,0 +1,6 @@
+# Generated dataset + trained adapter (regenerate with the scripts).
+safety_dataset.jsonl
+safety-lora/
+*.safetensors
+checkpoint-*/
+safety-merged/

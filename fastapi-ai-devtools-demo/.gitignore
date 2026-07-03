@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local model cache (sentence-transformers / huggingface)
+.cache/
+models/
+*.onnx
+
+# OpenJarvis runtime home (fallback dir; logs/state, not source)
+.openjarvis-demo/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

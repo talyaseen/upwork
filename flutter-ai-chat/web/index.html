@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+
+  <!--
+    Content-Security-Policy: only same-origin scripts may execute. Every
+    third-party script has been removed; mermaid.js is self-hosted under
+    vendor/ (see below). 'wasm-unsafe-eval' is required by Flutter's CanvasKit
+    renderer when self-hosted (build with `flutter build web
+    --no-web-resources-cdn` so CanvasKit is served from this origin, not a CDN).
+    style-src allows inline styles because Flutter and mermaid inject them.
+    connect-src is 'self': the backend (/api/status, /chat SSE, /auth) is
+    expected to be reverse-proxied under the same origin as the app. If it is
+    served from a different origin, add that exact origin to connect-src.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'wasm-unsafe-eval';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data: blob:;
+    font-src 'self' data:;
+    connect-src 'self' blob:;
+    worker-src 'self' blob:;
+    object-src 'none';
+    base-uri 'self';
+    frame-ancestors 'none';
+  ">
+
+  <meta name="description" content="AI-First Assistant - grounded AI chat with verifiable sources, built in Flutter.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="AI-First Assistant">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>AI-First Assistant</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!--
+    mermaid.js (self-hosted, pinned to an exact version under vendor/) renders
+    Mermaid diagrams from source on the client when the backend did not include
+    a pre-rendered SVG. SVG diagrams are drawn without it. Loaded from this
+    app's own origin only - no third-party CDN - to satisfy the CSP above and
+    remove the supply-chain risk of a floating CDN dependency. To upgrade,
+    re-vendor a new pinned version into web/vendor/mermaid.min.js.
+  -->
+  <script src="vendor/mermaid.min.js"></script>
+  <script src="vendor/mermaid-init.js"></script>
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

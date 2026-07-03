@@ -1,0 +1,63 @@
+name: flutter_ai_chat
+description: "AI-First Assistant - a grounded AI chat client for Flutter, integrated with a REST backend over JWT auth."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.2
+  provider: ^6.1.2
+  # Client-side PDF generation for diagram + code-review downloads (pure Dart,
+  # so the document-build paths are unit-testable on the Dart VM without a
+  # browser). SVG embedding uses pw.SvgImage from this same package.
+  pdf: ^3.11.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  # Used to drive the status-banner poll loop under controlled (fake) time.
+  fake_async: ^1.3.1
+
+flutter:
+  uses-material-design: true
+
+  # Self-hosted Roboto (vendored from the Flutter SDK's own
+  # bin/cache/artifacts/material_fonts, Apache License 2.0 - see
+  # fonts/Roboto_LICENSE.txt). Without this, the app declares no bundled font
+  # at all, so the CanvasKit web renderer treats every glyph as "not covered
+  # by a bundled font" and falls back to fetching Roboto from
+  # https://fonts.gstatic.com at runtime - which the CSP's
+  # `connect-src 'self' blob:` correctly blocks, leaving all text invisible.
+  # Bundling the weights actually used by lib/app/theme.dart / the chat UI
+  # (400/500/700) makes text render fully offline/same-origin, no CDN call
+  # ever made.
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: fonts/Roboto-Regular.ttf
+          weight: 400
+        - asset: fonts/Roboto-Medium.ttf
+          weight: 500
+        - asset: fonts/Roboto-Bold.ttf
+          weight: 700
+    # Self-hosted Roboto Mono (same vendoring rationale + same Apache License
+    # 2.0 as Roboto above - see fonts/RobotoMono_LICENSE.txt), sourced from the
+    # Flutter SDK's own bundled devtools assets (no network fetch). Used for
+    # code/diagram-source blocks (see app/theme.dart's `mono` text style) so
+    # technical content reads in a deliberate monospace family instead of
+    # falling back to whatever generic monospace font a given OS/browser has.
+    - family: RobotoMono
+      fonts:
+        - asset: fonts/RobotoMono-Regular.ttf
+          weight: 400
+        - asset: fonts/RobotoMono-Medium.ttf
+          weight: 500
+        - asset: fonts/RobotoMono-Bold.ttf
+          weight: 700

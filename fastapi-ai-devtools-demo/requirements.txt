@@ -1,0 +1,22 @@
+# Runtime dependencies (pinned).
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+SQLAlchemy==2.0.36
+aiosqlite==0.20.0
+python-multipart==0.0.20
+PyJWT==2.10.1
+bcrypt==4.2.1
+numpy==2.2.1
+
+# Local embedding model (CPU). sentence-transformers pulls in torch and
+# transformers. The model weights are downloaded once to the local cache on
+# first run; inference is fully in-process with no external API calls.
+sentence-transformers==3.3.1
+
+# OpenAI-compatible client for the generative /chat (RAG) endpoint. By default
+# it points at a LOCAL Ollama server (http://localhost:11434/v1), so no paid
+# external API is contacted. The same SDK drives real OpenAI unchanged: only
+# OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL differ. See the README.
+openai==1.109.1

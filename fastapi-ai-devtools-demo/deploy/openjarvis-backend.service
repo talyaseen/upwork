@@ -1,0 +1,110 @@
+# systemd OS-sandbox unit for the OpenJarvis demo backend (FastAPI + Uvicorn).
+#
+# Least-privilege, defense-in-depth at the OS layer, ON TOP OF the app-layer
+# guarantees (no dangerous tools wired into the agent; in-house input/output
+# guard; sanitized corpus). The model/agent runtime is confined so that even if a
+# prompt-level attack somehow reached the process, it could not read host files,
+# write outside its data dir, escalate privilege, or reach the network beyond the
+# local inference engines.
+#
+# DELIVERED, NOT auto-installed. Review, then:
+#   sudo cp deploy/openjarvis-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now openjarvis-backend
+# Adjust User/paths to your deploy. Verify with deploy/verify_sandbox.sh.
+#
+# NOTE on architecture: vLLM (GPU) and Ollama (CPU) run as SEPARATE services; this
+# unit confines ONLY the FastAPI backend, which talks to them over localhost HTTP.
+# So this process never needs broad device or network access.
+
+[Unit]
+Description=OpenJarvis AI dev-tools demo backend (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# --- Identity: unprivileged, dedicated user (create it; owns only the data dir) -
+User=openjarvis
+Group=openjarvis
+# DynamicUser=yes is an even stronger option if you do not need a stable uid.
+
+# --- Paths: app is read-only; the ONLY writable path is the data dir -----------
+# Pin OpenJarvis' whole home (config/memory/traces/telemetry) to a demo-only dir.
+Environment=OPENJARVIS_HOME=/var/lib/openjarvis-demo
+WorkingDirectory=/opt/openjarvis-backend
+ExecStart=/opt/openjarvis-backend/.venv/bin/python -m uvicorn app.main:app \
+    --host 127.0.0.1 --port 8001 --workers 1
+Restart=on-failure
+RestartSec=3
+
+# --- Filesystem isolation ------------------------------------------------------
+ProtectSystem=strict          # entire FS read-only...
+ReadWritePaths=/var/lib/openjarvis-demo   # ...except the data dir (only writable path)
+ProtectHome=true              # /home, /root, /run/user are INVISIBLE (cannot read /home)
+PrivateTmp=true               # private /tmp and /var/tmp
+# Belt-and-suspenders: explicitly hide secrets/host config even if mis-placed.
+InaccessiblePaths=-/opt/openjarvis-backend/.env -/etc/openjarvis -/root -/home
+ProtectProc=invisible         # cannot see other processes in /proc
+ProcSubset=pid
+
+# --- Privilege / capability lockdown ------------------------------------------
+NoNewPrivileges=true
+CapabilityBoundingSet=         # drop ALL capabilities
+AmbientCapabilities=
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictNamespaces=true        # cannot create new namespaces (no container escape)
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true           # cannot change/learn host identity via this path
+RemoveIPC=true
+UMask=0077
+
+# --- Devices: closed, then allow ONLY the NVIDIA nodes nvidia-smi needs --------
+# The backend's GPU monitor shells out to nvidia-smi (read-only telemetry). Grant
+# the minimum device access for that and nothing else (no disks, no tty, no net
+# devices). If you do NOT need the autonomous nvidia-smi monitor (the yield LOCK
+# file is the authoritative training-coordination signal), set PrivateDevices=true
+# and drop these DeviceAllow lines.
+DevicePolicy=closed
+DeviceAllow=/dev/nvidiactl r
+DeviceAllow=/dev/nvidia-uvm r
+DeviceAllow=/dev/nvidia0 r
+DeviceAllow=/dev/nvidia1 r
+
+# --- System call filter --------------------------------------------------------
+# Allow the baseline service set; deny privileged/mount/reboot/swap/raw-io/obsolete
+# families. (execve itself is required for the Python runtime to start, so it is
+# NOT blocked here; the agent has NO code-exec path at the APP layer - see
+# app/services/skills.py + tests/test_containment.py.)
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged ~@mount ~@reboot ~@swap ~@raw-io ~@obsolete ~@clock ~@cpu-emulation ~@debug ~@module
+
+# --- Network: egress blocked except loopback (Ollama 11434 / vLLM 8000) --------
+# A jailbroken model cannot exfiltrate: it can reach ONLY localhost engines.
+# RestrictAddressFamilies limits socket families. IPAddressDeny/Allow is the
+# systemd-native egress firewall BUT requires cgroup-v2 BPF support; in some
+# containers (e.g. this validation LXC) it is silently NOT enforced. ENFORCE THE
+# EGRESS DEFAULT-DENY AT THE HOST FIREWALL TOO (nftables/ufw: allow loopback +
+# 11434/8000, deny the rest) as the guaranteed layer. See deploy/HARDENING.md.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+# --- MemoryDenyWriteExecute (W^X) ----------------------------------------------
+# STRONGEST anti-exploit knob. It can break torch/vLLM/numpy JIT or BLAS that map
+# W+X pages, so it is gated behind a test. VALIDATED 2026-06-30 on this build:
+# `import torch` (CPU) AND the full app factory load fine under W^X (see
+# deploy/verify_sandbox.sh). Left OFF by default pending a load-test of the REAL
+# sentence-transformers embedding path under traffic; enable once that passes. If
+# the runtime ever crashes on startup, drop ONLY this one line, keep the rest.
+# MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

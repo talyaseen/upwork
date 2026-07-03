@@ -1,0 +1,20 @@
+[project]
+name = "fastapi-ai-devtools-demo"
+version = "1.0.0"
+description = "Semantic search and extractive Q&A API powered by a local embedding model."
+requires-python = ">=3.11"
+authors = [{ name = "Talal Alyaseen" }]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
